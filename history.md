@@ -172,6 +172,7 @@
 | 88 | Codex 사용량 스냅샷 선택 수정 및 v1.8.5 릴리즈 | 최상위 Codex rateLimits를 우선하도록 파서를 수정하고 회귀 테스트와 실제 앱 검증 후 앱 번들 버전 1.8.5로 승격 |
 | 89 | Claude 상태줄 연동과 프로젝트 탐색 개선 및 v1.8.6 릴리즈 | Claude 자격 증명 조회를 공식 상태줄 수신으로 대체하고 프로젝트·탭 단축키, 기본 이름, 행 정렬과 드래그 순서 저장을 개선해 v1.8.6 배포 준비 |
 | 90 | 현재 SDK의 Markdown Document 타입 충돌 해결 | Markdown.Document로 타입을 한정해 기존 컴파일 실패를 해소하고 사용성 개선의 검증 기반 복구 |
+| 91 | 실제 caffeinate 상태와 소유 assertion 분리 | 외부 유휴 절전 방지를 감지하고 MarkAgent assertion만 제어하며 실제 IOKit 생성·해제와 외부 상태 보존 검증 |
 
 ---
 
@@ -3556,3 +3557,13 @@ Cmd+1은 기본 작업 공간, Cmd+2부터 Cmd+0은 사이드바 순서의 첫 �
 첫 집중 테스트 실행이 기존 `MarkdownRenderer.visitDocument`의 `Document` 타입 모호성으로 컴파일 단계에서 실패했다. `Markdown.Document`로 타입을 한정해 해결했으며, 이후 모듈 빌드와 집중 테스트 실행이 정상적으로 진행됐다. 렌더링 동작은 바꾸지 않았고 LSP 오류도 없었다.
 
 변경 파일: `Sources/Rendering/MarkdownRenderer.swift`
+
+### 대화 2: 실제 caffeinate 상태 반영
+
+**사용자:**
+> caffeinate 상태를 확인하고 하단 토글 버튼에 반영해야해.
+
+**응답:**
+IOKit으로 실제 유휴 절전 방지 상태를 조회하고 앱 소유 상태와 분리했다. 외부 앱의 assertion은 해제하지 않고 하단에 외부 활성 상태를 표시한다. 앱 assertion을 끌 때 즉시 다시 조회하며 종료 시 남은 소유 assertion을 정리한다. 실제 OS 실행에서 집계값 `1`과 생성용 상수 `255`의 차이를 발견해 `boolValue`로 수정하고 실제 IOKit 회귀 테스트를 추가했다. 관련 테스트 13개, 전체 테스트 345개가 통과했고 직접 실행한 OS 검증에서 본인 assertion `0→1→0`과 외부 상태 보존을 확인했다. GUI 표시 검증은 화면 기록 권한 적용 후 진행한다.
+
+변경 파일: `Sources/Core/SystemStatusModel.swift`, `Sources/Views/Main/BottomStatusBar.swift`, `Tests/MarkAgentTests/SystemStatusModelTests.swift`, 한국어·영어 번역

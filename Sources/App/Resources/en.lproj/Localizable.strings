@@ -215,6 +215,11 @@
 "git 명령을 실행할 수 없습니다." = "Unable to run git command.";
 "git 명령이 시간 내에 완료되지 않았습니다." = "The git command timed out.";
 
+/* Caffeinate 상태 */
+"External" = "External";
+"외부 절전 방지는 유지하고 MarkAgent assertion 생성" = "Keep external sleep prevention active and create a MarkAgent assertion";
+"Caffeinate 상태를 읽을 수 없습니다." = "Cannot read Caffeinate status.";
+
 /* Menu Items */
 "About MarkAgent" = "About MarkAgent";
 "Settings…" = "Settings…";
