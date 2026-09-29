@@ -215,6 +215,8 @@
 "git 명령을 실행할 수 없습니다." = "git 명령을 실행할 수 없습니다.";
 "git 명령이 시간 내에 완료되지 않았습니다." = "git 명령이 시간 내에 완료되지 않았습니다.";
 
+"Show Tab Bar" = "탭 바 표시";
+"Hide Tab Bar" = "탭 바 가리기";
 /* Caffeinate 상태 */
 "External" = "외부";
 "외부 절전 방지는 유지하고 MarkAgent assertion 생성" = "외부 절전 방지는 유지하고 MarkAgent assertion 생성";

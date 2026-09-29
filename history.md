@@ -3599,3 +3599,14 @@ IOKit으로 실제 유휴 절전 방지 상태를 조회하고 앱 소유 상태
 공통 사이드바 상단의 Git Init·브랜치 컨트롤을 Git 탭 본문으로 이동했다. 실제 앱에서 스니펫·타임라인·파일 브라우저에는 Git Init이 없고 Git 탭에만 표시되는 것을 확인했으며 사용자 캡처에서도 위치를 검증했다. 전체 테스트 346개와 서명 번들 빌드가 통과했다.
 
 변경 파일: `Sources/Views/Sidebar/RightSidebarView.swift`
+
+### 대화 6: 프로젝트별 상단 탭 바 표시·가리기
+
+**사용자:**
+> 프로젝트 내 탭 표시/가리기 기능도 추가해줘
+> 탭 표시 범위: 상단 탭 바 표시·숨김
+
+**응답:**
+기본 작업 공간과 각 프로젝트의 상단 탭 바 표시 설정을 별도로 저장한다. 프로젝트 문맥 메뉴와 보기 메뉴에서 복구할 수 있고, 탭과 터미널 내용은 유지한다. 실제 QA에서 A 숨김·B 독립 표시·A 복귀·재실행 복원·기본 작업 공간 복구를 확인했다. 표시와 숨김 및 프로젝트 왕복 전후에 동일한 셸 PID와 환경 변수가 유지됐으며, 관련 회귀를 포함한 전체 348개 테스트가 통과했다.
+
+변경 파일: `Sources/Core/Tabs/TabCollection.swift`, `Sources/Core/Tabs/TabWorkspaceID.swift`, `Sources/Views/Main/MainContainerView.swift`, `Sources/Views/Main/TabBarView.swift`, `Sources/Views/Sidebar/ProjectSidebar.swift`, `Sources/App/AppDelegate.swift`, `Tests/MarkAgentTests/TabBarVisibilityTests.swift`, 한국어·영어 번역

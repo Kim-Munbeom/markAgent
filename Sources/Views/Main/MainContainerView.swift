@@ -177,25 +177,42 @@ struct MainContainerView: View {
                             withAnimation(.easeInOut(duration: 0.16)) {
                                 isLeftSidebarVisible = false
                             }
+                        },
+                        isTabBarHidden: { workspaceID in
+                            tabs.isTabBarHidden(in: workspaceID)
+                        },
+                        onToggleTabBar: { workspaceID in
+                            withAnimation(.easeInOut(duration: 0.16)) {
+                                _ = tabs.toggleTabBarHidden(in: workspaceID)
+                            }
                         }
                     )
                 }
 
                 VStack(spacing: 0) {
-                    TabBarView(
-                        tabs: tabs,
-                        onNewTab: { isShowingNewTabChooser = true },
-                        showsLeftSidebarToggle: allocation.leftWidth == nil,
-                        onToggleLeftSidebar: {
-                            withAnimation(.easeInOut(duration: 0.16)) {
-                                isLeftSidebarVisible = true
+                    // workspace별 설정으로 탭 바를 통째로 내린다. 아래 ActiveTabContentView는 조건 밖에 있어
+                    // 활성 터미널 세션과 포커스가 그대로 유지되고, ⌘⇧1-9 그룹 이동은 AppDelegate가 처리해 계속 동작한다.
+                    if !tabs.isTabBarHidden {
+                        TabBarView(
+                            tabs: tabs,
+                            onNewTab: { isShowingNewTabChooser = true },
+                            showsLeftSidebarToggle: allocation.leftWidth == nil,
+                            onToggleLeftSidebar: {
+                                withAnimation(.easeInOut(duration: 0.16)) {
+                                    isLeftSidebarVisible = true
+                                }
+                            },
+                            showsRightSidebarToggle: isRightSidebarAbsent(allocation.right),
+                            onToggleRightSidebar: {
+                                activeTabGroup?.toggleRightUtility()
+                            },
+                            onHideTabBar: {
+                                withAnimation(.easeInOut(duration: 0.16)) {
+                                    tabs.setTabBarHidden(true, in: tabs.activeWorkspaceID)
+                                }
                             }
-                        },
-                        showsRightSidebarToggle: isRightSidebarAbsent(allocation.right),
-                        onToggleRightSidebar: {
-                            activeTabGroup?.toggleRightUtility()
-                        }
-                    )
+                        )
+                    }
 
                     ActiveTabContentView(
                         tabs: tabs,

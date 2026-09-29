@@ -8,6 +8,8 @@ struct TabBarView: View {
     var onToggleLeftSidebar: () -> Void = {}
     var showsRightSidebarToggle = false
     var onToggleRightSidebar: () -> Void = {}
+    /// 탭 스트립 컨텍스트 메뉴의 "탭 바 숨기기"가 호출한다. 어느 workspace를 숨길지는 호출자가 정한다.
+    var onHideTabBar: () -> Void = {}
 
     @State private var draggedTabID: UUID?
     @State private var isCommandKeyPressed = false
@@ -68,6 +70,14 @@ struct TabBarView: View {
         )
         .background(groupShortcutButtons)
         .background(CommandKeyObserver(isCommandKeyPressed: $isCommandKeyPressed))
+        .contentShape(Rectangle())
+        .contextMenu {
+            // 탭 위와 빈 영역 어디서 우클릭해도 같은 항목이 뜬다. 복원은 사이드바 행 메뉴나 View 메뉴에서 한다.
+            Button(String(localized: "Hide Tab Bar"), action: onHideTabBar)
+                .accessibilityIdentifier("tab-bar-hide")
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("tab-bar")
     }
 
     private var appColors: TerminalAppColors? {

@@ -416,6 +416,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         viewMenu.addItem(.separator())
 
+        let toggleWorkspaceTabBarItem = NSMenuItem(
+            title: String(localized: tabs.isTabBarHidden ? "Show Tab Bar" : "Hide Tab Bar"),
+            action: #selector(toggleWorkspaceTabBar),
+            keyEquivalent: ""
+        )
+        toggleWorkspaceTabBarItem.target = self
+        toggleWorkspaceTabBarItem.identifier = NSUserInterfaceItemIdentifier("workspace-tabbar-toggle")
+        viewMenu.addItem(toggleWorkspaceTabBarItem)
+
         let toggleLeftSidebarItem = NSMenuItem(title: String(localized: "Toggle Left Sidebar"), action: #selector(toggleLeftSidebar), keyEquivalent: "s")
         toggleLeftSidebarItem.keyEquivalentModifierMask = [.command, .option]
         toggleLeftSidebarItem.target = self
@@ -492,7 +501,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard let menu else { return }
 
         let toggleTabBarSelector = NSSelectorFromString("toggleTabBar:")
-        for item in menu.items where item.action == toggleTabBarSelector || item.title == "Show Tab Bar" {
+        for item in menu.items where item.action != #selector(toggleWorkspaceTabBar)
+            && (item.action == toggleTabBarSelector || item.title == "Show Tab Bar") {
             menu.removeItem(item)
         }
     }
@@ -846,6 +856,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         updateViewMenuState()
     }
 
+    @objc private func toggleWorkspaceTabBar() {
+        tabs.toggleTabBarHidden()
+        updateViewMenuState()
+    }
+
     @objc private func toggleLeftSidebar() {
         UserDefaults.standard.set(!isLeftSidebarVisible, forKey: leftSidebarVisibleDefaultsKey)
         updateViewMenuState()
@@ -974,6 +989,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
               let viewMenu = application.mainMenu?.item(withTitle: String(localized: "View"))?.submenu
         else { return }
         let document = tabs.activeMarkdownTab?.state.document
+        viewMenu.items.first { $0.action == #selector(toggleWorkspaceTabBar) }?.title =
+            String(localized: tabs.isTabBarHidden ? "Show Tab Bar" : "Hide Tab Bar")
         viewMenu.items.first { $0.action == #selector(toggleViewMode) }?.state = document?.viewMode == .preview ? .on : .off
         viewMenu.items.first { $0.action == #selector(showRawView) }?.state = document?.viewMode == .rawEdit ? .on : .off
         viewMenu.items.first { $0.action == #selector(toggleDiff) }?.isEnabled = document?.diffResult != nil
@@ -1085,6 +1102,9 @@ extension AppDelegate: NSWindowDelegate {
 extension AppDelegate: NSMenuItemValidation {
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         switch menuItem.action {
+        case #selector(toggleWorkspaceTabBar):
+            menuItem.title = String(localized: tabs.isTabBarHidden ? "Show Tab Bar" : "Hide Tab Bar")
+            return true
         case #selector(gotoWorkspace(_:)):
             menuItem.title = workspaceShortcutTitle(number: menuItem.tag)
             return menuItem.tag == 1 || projectStore.projects.indices.contains(menuItem.tag - 2)
