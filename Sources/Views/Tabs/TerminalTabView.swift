@@ -12,12 +12,14 @@ struct TerminalTabView: NSViewRepresentable {
         let view = SearchAwareTerminalView()
         view.onSearchShortcut = onSearchShortcut
         view.onSnippetShortcut = onSnippetShortcut
-        view.controller = state.terminalViewState.controller
-        view.configuration = state.terminalViewState.configuration
-        view.delegate = context.coordinator
-        view.setSurfaceVisible(isActive)
+        view.isActiveTerminal = isStillActive
+        view.connectSearch(state.search)
         context.coordinator.observeState(state)
         state.terminalView = view
+        view.delegate = context.coordinator
+        view.controller = state.terminalViewState.controller
+        view.configuration = state.terminalViewState.configuration
+        view.setSurfaceVisible(isActive)
 
         state.startIfNeeded()
 
@@ -34,6 +36,8 @@ struct TerminalTabView: NSViewRepresentable {
         if let searchAwareView = nsView as? SearchAwareTerminalView {
             searchAwareView.onSearchShortcut = onSearchShortcut
             searchAwareView.onSnippetShortcut = onSnippetShortcut
+            searchAwareView.isActiveTerminal = isStillActive
+            searchAwareView.connectSearch(state.search)
         }
         if nsView.controller !== state.terminalViewState.controller {
             nsView.controller = state.terminalViewState.controller
@@ -53,6 +57,13 @@ struct TerminalTabView: NSViewRepresentable {
         }
     }
 
+    func sizeThatFits(_ proposal: ProposedViewSize, nsView: AppTerminalView, context: Context) -> CGSize? {
+        guard let width = proposal.width, let height = proposal.height,
+              width.isFinite, height.isFinite else { return nil }
+        // 검색 오버레이의 fittingSize가 아니라 쉘이 배정한 viewport를 따른다.
+        return CGSize(width: width, height: height)
+    }
+
     func makeCoordinator() -> Coordinator {
         Coordinator()
     }
@@ -66,14 +77,16 @@ struct TerminalTabView: NSViewRepresentable {
         view.setSurfaceVisible(false)
         coordinator.detach(from: view)
         if let searchAwareView = view as? SearchAwareTerminalView {
-            searchAwareView.onSearchShortcut = { _ in }
-            searchAwareView.onSnippetShortcut = { _ in }
+            searchAwareView.disconnectSearch()
+            searchAwareView.onSearchShortcut = nil
+            searchAwareView.onSnippetShortcut = nil
+            searchAwareView.selectedTextProvider = nil
         }
         view.delegate = nil
         view.controller = nil
     }
 
-    class Coordinator: NSObject, TerminalSurfaceTitleDelegate, TerminalSurfaceCloseDelegate, TerminalSurfacePwdDelegate {
+    class Coordinator: NSObject, TerminalSurfaceTitleDelegate, TerminalSurfaceCloseDelegate, TerminalSurfacePwdDelegate, TerminalSurfaceSearchDelegate, TerminalSurfaceLifecycleDelegate {
         private weak var state: TerminalTabState?
 
         func observeState(_ state: TerminalTabState) {
@@ -98,16 +111,31 @@ struct TerminalTabView: NSViewRepresentable {
         func terminalDidChangeWorkingDirectory(_ path: String) {
             state?.updateWorkingDirectory(path)
         }
+
+        func terminalDidUpdateSearchTotal(_ total: Int?) {
+            state?.search.receiveTotal(total)
+        }
+
+        func terminalDidUpdateSearchSelected(_ selected: Int?) {
+            state?.search.receiveSelected(selected)
+        }
+
+        func terminalDidAttachSurface(_ surface: TerminalSurface) {}
+
+        func terminalDidDetachSurface() {
+            (state?.terminalView as? SearchAwareTerminalView)?.dismissTerminalSearch(restoringFocus: false)
+        }
     }
 }
 
 @MainActor
 enum TerminalFocusPolicy {
     static func resignIfNeeded(_ view: NSView) {
-        guard let window = view.window,
-              window.firstResponder === view else {
+        guard let window = view.window else {
             return
         }
+        let ownsSearchFocus = (view as? SearchAwareTerminalView)?.searchBar?.ownsFirstResponder == true
+        guard window.firstResponder === view || ownsSearchFocus else { return }
         window.makeFirstResponder(nil)
     }
 
@@ -115,11 +143,14 @@ enum TerminalFocusPolicy {
         _ view: NSView,
         isActive: @escaping @MainActor () -> Bool
     ) {
-        DispatchQueue.main.async {
+        DispatchQueue.main.async { [weak view] in
+            guard let view else { return }
             guard isActive() else {
                 resignIfNeeded(view)
                 return
             }
+            // 검색 UI의 포커스는 SwiftUI 갱신이나 지연된 터미널 포커스 요청보다 우선한다.
+            if (view as? SearchAwareTerminalView)?.searchState?.isPresented == true { return }
             view.window?.makeFirstResponder(view)
         }
     }

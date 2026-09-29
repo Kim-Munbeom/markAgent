@@ -3610,3 +3610,13 @@ IOKit으로 실제 유휴 절전 방지 상태를 조회하고 앱 소유 상태
 기본 작업 공간과 각 프로젝트의 상단 탭 바 표시 설정을 별도로 저장한다. 프로젝트 문맥 메뉴와 보기 메뉴에서 복구할 수 있고, 탭과 터미널 내용은 유지한다. 실제 QA에서 A 숨김·B 독립 표시·A 복귀·재실행 복원·기본 작업 공간 복구를 확인했다. 표시와 숨김 및 프로젝트 왕복 전후에 동일한 셸 PID와 환경 변수가 유지됐으며, 관련 회귀를 포함한 전체 348개 테스트가 통과했다.
 
 변경 파일: `Sources/Core/Tabs/TabCollection.swift`, `Sources/Core/Tabs/TabWorkspaceID.swift`, `Sources/Views/Main/MainContainerView.swift`, `Sources/Views/Main/TabBarView.swift`, `Sources/Views/Sidebar/ProjectSidebar.swift`, `Sources/App/AppDelegate.swift`, `Tests/MarkAgentTests/TabBarVisibilityTests.swift`, 한국어·영어 번역
+
+### 대화 7: 터미널 화면·스크롤백 검색
+
+**사용자:**
+> 터미널 화면내 항목 검색 기능을 추가해야해.
+
+**응답:**
+Cmd+F 검색창, 실제 Ghostty 스크롤백 검색, 이전·다음 결과, 결과 없음, Escape 입력 복귀를 구현했다. 버전 가드된 소스 오버레이로 검색 콜백을 전달하며 0 기반 결과 번호를 화면의 1 기반 번호로 변환한다. 기존 Cmd+Shift+F/G와 선택 스니펫 단축키도 실제 앱에서 확인했다. 사용자 캡처로 검색 강조와 1/2 이동을 검증했고, 320pt에서 검색창이 터미널 폭을 늘리던 문제를 네이티브 회귀 테스트로 재현·수정했다. 전체 348개 테스트가 통과했다. Ghostty PR #23 포함 revision은 유지했다.
+
+변경 파일: `Sources/Core/Tabs/TerminalSearchState.swift`, `Sources/Core/Tabs/TerminalTabState.swift`, `Sources/Views/Tabs/TerminalSearchBar.swift`, `Sources/Views/Tabs/SearchAwareTerminalView.swift`, `Sources/Views/Tabs/TerminalTabView.swift`, `Tests/MarkAgentTests/TerminalSearchTests.swift`, `Tests/MarkAgentTests/TerminalSearchIntegrationTests.swift`, `Tests/MarkAgentTests/TerminalSearchLayoutTests.swift`, `scripts/patch-libghostty-resource-bundle.sh`, `scripts/patches/TerminalSurfaceSearchDelegate.swift`, `scripts/patches/libghostty-search-callbacks.patch`, 한국어·영어 번역
