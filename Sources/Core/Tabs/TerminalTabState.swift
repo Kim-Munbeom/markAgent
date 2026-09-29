@@ -15,6 +15,7 @@ final class TerminalTabState {
     var didStart: Bool = false
     var onCloseRequested: (() -> Void)?
     var onDirectoryChanged: ((URL) -> Void)?
+    var onDesktopNotification: ((String, String) -> Void)?
     weak var terminalView: AppTerminalView?
     let search = TerminalSearchState()
     private let userConfigProvider: () -> GhosttyConfig?
@@ -228,6 +229,7 @@ final class TerminalTabState {
 
     func close() {
         search.disconnect()
+        onDesktopNotification = nil
         terminalViewState.onClose = nil
         didStart = false
     }

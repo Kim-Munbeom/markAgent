@@ -18,6 +18,7 @@ final class TabCollection {
     private var hiddenTabBarWorkspaceIDs: Set<TabWorkspaceID>
     private let defaults: UserDefaults
     weak var dirtyPrompter: DirtyDocumentPrompting?
+    var onTerminalNotification: ((UUID, String, String) -> Void)?
 
     init(unscopedRootDirectory: URL? = nil, defaults: UserDefaults = .standard) {
         let rootDirectory = unscopedRootDirectory?.standardizedFileURL
@@ -230,6 +231,9 @@ final class TabCollection {
         state.onDirectoryChanged = { [weak groupState] url in
             groupState?.updateWorkingDirectory(url)
             onDirectoryChanged?(url)
+        }
+        state.onDesktopNotification = { [weak self] title, body in
+            self?.onTerminalNotification?(id, title, body)
         }
 
         append(tab, to: targetWorkspaceID)

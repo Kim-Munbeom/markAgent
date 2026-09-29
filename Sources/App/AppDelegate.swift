@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
+import UserNotifications
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -23,6 +24,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var rootHostingView: NSHostingView<AnyView>?
     private var searchKeyMonitor: Any?
     private var claudeUsageObserver: NSObjectProtocol?
+    private var notificationCenter: UNUserNotificationCenter?
+    private var terminalNotificationController: TerminalNotificationController?
 
     override convenience init() {
         self.init(projectStore: ProjectStore())
@@ -56,6 +59,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.claudeUsageObserver = nil
         super.init()
         tabs.dirtyPrompter = dirtyPrompter
+    }
+
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        let center = UNUserNotificationCenter.current()
+        let controller = TerminalNotificationController(operations: .live(center: center)) { [weak self] tabID in
+            _ = self?.activateTerminalNotification(tabID)
+        }
+        notificationCenter = center
+        terminalNotificationController = controller
+        center.delegate = controller
+        tabs.onTerminalNotification = { [weak controller] tabID, title, body in
+            Task { @MainActor [weak controller] in
+                do {
+                    try await controller?.send(tabID: tabID, title: title, body: body)
+                } catch {
+                    NSLog("터미널 Notification 전달 실패: \(error.localizedDescription)")
+                }
+            }
+        }
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -95,6 +117,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        tabs.onTerminalNotification = nil
+        notificationCenter?.delegate = nil
+        terminalNotificationController = nil
+        notificationCenter = nil
         subscriptionStatus.stopPolling()
         systemStatus.stopSampling()
         if let searchKeyMonitor {
@@ -714,6 +740,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 fallback: FileManager.default.homeDirectoryForCurrentUser
             )
         }
+    }
+
+    @discardableResult
+    func activateTerminalNotification(_ tabID: UUID) -> Bool {
+        guard let terminal = tabs.allTabs.first(where: { $0.id == tabID }) as? TerminalTab,
+              let workspaceID = tabs.workspaceID(forTabID: tabID),
+              tabs.selectWorkspace(workspaceID)
+        else { return false }
+
+        tabs.selectTab(id: tabID)
+        syncActiveWorkspaceDirectory(fallback: terminal.workingDirectory)
+        if let window {
+            window.makeKeyAndOrderFront(nil)
+            NSRunningApplication.current.activate()
+            if let view = terminal.state.terminalView {
+                TerminalFocusPolicy.requestFocus(view, isActive: { [weak tabs] in
+                    tabs?.isActiveTab(id: tabID) == true
+                })
+            }
+        }
+        return true
     }
 
     private func syncActiveWorkspaceDirectory(fallback: URL) {

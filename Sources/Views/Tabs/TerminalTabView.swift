@@ -86,7 +86,7 @@ struct TerminalTabView: NSViewRepresentable {
         view.controller = nil
     }
 
-    class Coordinator: NSObject, TerminalSurfaceTitleDelegate, TerminalSurfaceCloseDelegate, TerminalSurfacePwdDelegate, TerminalSurfaceSearchDelegate, TerminalSurfaceLifecycleDelegate {
+    class Coordinator: NSObject, TerminalSurfaceTitleDelegate, TerminalSurfaceCloseDelegate, TerminalSurfacePwdDelegate, TerminalSurfaceSearchDelegate, TerminalSurfaceLifecycleDelegate, TerminalSurfaceDesktopNotificationDelegate {
         private weak var state: TerminalTabState?
 
         func observeState(_ state: TerminalTabState) {
@@ -110,6 +110,10 @@ struct TerminalTabView: NSViewRepresentable {
 
         func terminalDidChangeWorkingDirectory(_ path: String) {
             state?.updateWorkingDirectory(path)
+        }
+
+        func terminalDidRequestDesktopNotification(title: String, body: String) {
+            state?.onDesktopNotification?(title, body)
         }
 
         func terminalDidUpdateSearchTotal(_ total: Int?) {

@@ -3620,3 +3620,15 @@ IOKit으로 실제 유휴 절전 방지 상태를 조회하고 앱 소유 상태
 Cmd+F 검색창, 실제 Ghostty 스크롤백 검색, 이전·다음 결과, 결과 없음, Escape 입력 복귀를 구현했다. 버전 가드된 소스 오버레이로 검색 콜백을 전달하며 0 기반 결과 번호를 화면의 1 기반 번호로 변환한다. 기존 Cmd+Shift+F/G와 선택 스니펫 단축키도 실제 앱에서 확인했다. 사용자 캡처로 검색 강조와 1/2 이동을 검증했고, 320pt에서 검색창이 터미널 폭을 늘리던 문제를 네이티브 회귀 테스트로 재현·수정했다. 전체 348개 테스트가 통과했다. Ghostty PR #23 포함 revision은 유지했다.
 
 변경 파일: `Sources/Core/Tabs/TerminalSearchState.swift`, `Sources/Core/Tabs/TerminalTabState.swift`, `Sources/Views/Tabs/TerminalSearchBar.swift`, `Sources/Views/Tabs/SearchAwareTerminalView.swift`, `Sources/Views/Tabs/TerminalTabView.swift`, `Tests/MarkAgentTests/TerminalSearchTests.swift`, `Tests/MarkAgentTests/TerminalSearchIntegrationTests.swift`, `Tests/MarkAgentTests/TerminalSearchLayoutTests.swift`, `scripts/patch-libghostty-resource-bundle.sh`, `scripts/patches/TerminalSurfaceSearchDelegate.swift`, `scripts/patches/libghostty-search-callbacks.patch`, 한국어·영어 번역
+
+### 대화 8: 터미널 Notification과 원래 탭 복귀
+
+**사용자:**
+> 추가로 터미널의 Notification 도 지원해줘.
+
+**응답:**
+Ghostty의 OSC9/777 콜백을 macOS 알림에 연결하고 첫 실제 요청 시 권한을 요청한다. 알림 클릭은 원래 프로젝트의 기존 터미널로 이동하며 닫힌 탭은 다시 만들지 않는다. 동일 탭의 반복 알림은 같은 식별자로 교체한다. 권한 거부·실제 Ghostty 전달·비활성 프로젝트·닫힌 탭 회귀 테스트와 실제 사용자 허용·알림 캡처·B에서 A로 클릭 복귀를 확인했다.
+
+임시 경로의 QA 번들은 시스템 앱 조회가 -10814로 실패했으나, 동일 서명의 별도 Applications QA 번들에서는 권한과 전달이 정상 동작했다. 권한 저장소를 수정하거나 사용자 승인 절차를 우회하지 않았다.
+
+변경 파일: `Sources/Core/TerminalNotificationController.swift`, `Sources/Core/Tabs/TerminalTabState.swift`, `Sources/Core/Tabs/TabCollection.swift`, `Sources/Views/Tabs/TerminalTabView.swift`, `Sources/App/AppDelegate.swift`, `Tests/MarkAgentTests/TerminalNotificationTests.swift`
