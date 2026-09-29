@@ -173,6 +173,7 @@
 | 89 | Claude 상태줄 연동과 프로젝트 탐색 개선 및 v1.8.6 릴리즈 | Claude 자격 증명 조회를 공식 상태줄 수신으로 대체하고 프로젝트·탭 단축키, 기본 이름, 행 정렬과 드래그 순서 저장을 개선해 v1.8.6 배포 준비 |
 | 90 | 현재 SDK의 Markdown Document 타입 충돌 해결 | Markdown.Document로 타입을 한정해 기존 컴파일 실패를 해소하고 사용성 개선의 검증 기반 복구 |
 | 91 | 실제 caffeinate 상태와 소유 assertion 분리 | 외부 유휴 절전 방지를 감지하고 MarkAgent assertion만 제어하며 실제 IOKit 생성·해제와 외부 상태 보존 검증 |
+| 92 | 사이드바·터미널 검색·알림·탭 바 개선과 날짜 버전 전환 | 실제 앱 검증, 348개 테스트, 탭 종료 누수 0건과 QA 정리를 완료하고 26.09.29 배포 준비 |
 
 ---
 
@@ -3654,3 +3655,15 @@ Ghostty의 OSC9/777 콜백을 macOS 알림에 연결하고 첫 실제 요청 시
 320pt/900pt 프레임·스크롤·선택 보존 회귀 테스트, 전체 348개 테스트와 서명 번들이 통과했다. 사용자 캡처로 침범 해소와 줄 번호를 확인했고, 실제 툴바 가로 스크롤로 마지막 코드 버튼에 접근했다. 실제 텍스트 입력과 Cmd+S 파일 저장 및 최종 프로세스 누수 0건도 확인했다.
 
 변경 파일: `Sources/Views/Tabs/MarkdownTabView.swift`, `Sources/Views/EditorView.swift`, `Tests/MarkAgentTests/MarkdownTabLayoutTests.swift`
+
+### 대화 11: 날짜 기반 버전과 릴리스 준비
+
+**사용자:**
+> 버전 번호를 앞으로는 연도.월.일 형식으로 바꿔줘. 이번에 릴리즈하는 버전은 26.09.29 인거야
+
+**응답:**
+기존 patch 증가 정책을 `YY.MM.DD` 형식으로 바꿨다. 두 Info.plist 버전 필드에 `26.09.29`를 적용하고, AGENTS·릴리스 명령·README의 기본 버전 규칙도 로컬 릴리스 날짜를 사용하도록 갱신했다. 모든 기능과 추가 수정의 실제 앱 검증, 348개 테스트, 서명 번들, 최종 탭 종료 누수 0건을 확인했다. 세션 소유 QA 프로세스, 앱 등록·번들·폴더·설정과 임시 로그·렌더를 정리했다.
+
+사용자가 요청한 기능 브랜치→dev PR, dev→main PR 병합 후 최종 main에서 서명·공증 ZIP을 만들고 `v26.09.29`로 게시하는 절차를 진행한다. 사용자 소유 앱과 외부 caffeinate 프로세스는 종료하지 않았다.
+
+변경 파일: `Sources/App/Info.plist`, `AGENTS.md`, `.claude/commands/release-build.md`, `README.md`, `history.md`

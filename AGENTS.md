@@ -175,6 +175,12 @@ markAgent/
 
 ## Workflow Rules
 
+### 릴리스 버전 형식
+
+- 릴리스 버전은 `YY.MM.DD` 형식으로 표기한다. 예: `26.09.29`.
+- 버전 인자가 없으면 로컬 릴리스 날짜를 `date +%y.%m.%d`로 구한다. 기존 버전의 patch 번호를 증가시키지 않는다.
+- `CFBundleShortVersionString`과 `CFBundleVersion`에 같은 값을 적용하며 태그와 ZIP 이름은 `v<version>`, `MarkAgent-v<version>.zip` 형식을 유지한다.
+
 ### 테스트 및 메모리 누수 점검 (필수)
 
 구현 후에는 변경 범위에 맞는 가장 좁고 의미 있는 검증을 실행한다.
