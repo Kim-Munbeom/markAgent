@@ -3579,3 +3579,13 @@ IOKit으로 실제 유휴 절전 방지 상태를 조회하고 앱 소유 상태
 회귀 테스트에서 최초 선택과 재생성 후 상태 복원의 실패를 먼저 확인한 뒤 수정했다. 실제 QA 앱을 각각 열린 상태와 닫힌 상태로 종료·재실행하여 두 설정의 복원을 확인했다. 사용자 제공 캡처에서도 첫 탭 선택을 확인했다. 최신 전체 테스트 346개가 통과했으며 현재까지 실제 조작 후 누수 점검은 0건이다. 알림·탭 닫기 이후의 최종 누수 점검과 배포는 후속 검증으로 진행한다.
 
 변경 파일: `Sources/Core/Tabs/RightUtilityRouting.swift`, `Sources/Core/Tabs/TabGroupState.swift`, `Tests/MarkAgentTests/RightUtilityRoutingTests.swift`, `Tests/MarkAgentTests/TabGroupStateTests.swift`
+
+### 대화 4: 저장된 프롬프트 전체 본문 표시
+
+**사용자:**
+> 저장된 프롬프트의 첫줄만 나와서 불편해.
+
+**응답:**
+첫 번째 비어 있지 않은 줄과 80자만 추리던 미리보기 변환을 제거했다. 저장된 본문 전체를 여러 줄로 표시하고 세로 높이를 내용에 맞춘다. 실제 QA에서 세 줄 프롬프트를 저장한 뒤 사용자 캡처로 전체 표시를 확인했고, 클릭 복사 결과도 줄바꿈을 포함한 원문과 일치했다. 전체 테스트 346개와 실제 앱 누수 0건을 확인했다.
+
+변경 파일: `Sources/Views/Sidebar/PromptSnippetsSidebarView.swift`
