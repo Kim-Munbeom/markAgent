@@ -229,6 +229,8 @@ final class TerminalTabState {
 
     func close() {
         search.disconnect()
+        onDirectoryChanged = nil
+        onCloseRequested = nil
         onDesktopNotification = nil
         terminalViewState.onClose = nil
         didStart = false

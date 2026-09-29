@@ -484,7 +484,8 @@ struct MainContainerView: View {
 
     private func setupActiveTabDirectoryObserver() {
         guard let terminalTab = tabs.activeTerminalTab else { return }
-        terminalTab.state.onDirectoryChanged = { url in
+        terminalTab.state.onDirectoryChanged = { [weak terminalTab] url in
+            guard let terminalTab else { return }
             terminalTab.groupState.updateWorkingDirectory(url)
             guard self.tabs.activeTerminalTab?.id == terminalTab.id else { return }
             self.scanner.setDirectory(url)

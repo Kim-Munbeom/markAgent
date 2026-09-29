@@ -3632,3 +3632,13 @@ Ghostty의 OSC9/777 콜백을 macOS 알림에 연결하고 첫 실제 요청 시
 임시 경로의 QA 번들은 시스템 앱 조회가 -10814로 실패했으나, 동일 서명의 별도 Applications QA 번들에서는 권한과 전달이 정상 동작했다. 권한 저장소를 수정하거나 사용자 승인 절차를 우회하지 않았다.
 
 변경 파일: `Sources/Core/TerminalNotificationController.swift`, `Sources/Core/Tabs/TerminalTabState.swift`, `Sources/Core/Tabs/TabCollection.swift`, `Sources/Views/Tabs/TerminalTabView.swift`, `Sources/App/AppDelegate.swift`, `Tests/MarkAgentTests/TerminalNotificationTests.swift`
+
+### 대화 9: 터미널 탭 종료 시 순환 참조 해소
+
+**사용자:**
+> 메모리 리크문제는 항상 체크해야해.
+
+**응답:**
+실제 검색·선택 스니펫·프로젝트 전환 후 두 터미널을 닫자 57건, 325872바이트의 누수가 검출됐다. `TerminalTab → TerminalTabState.onDirectoryChanged → TerminalTab` 순환 참조를 확인해 탭 캡처를 weak로 바꾸고 종료 시 작업 경로·닫기 콜백을 정리했다. weak tab 해제 회귀 테스트가 수정 전 실패하고 수정 후 통과했다. 같은 실제 종료 흐름을 반복한 최종 `leaks --noContent 91413` 결과는 0건/0바이트이며 전체 348개 테스트도 통과했다.
+
+변경 파일: `Sources/Views/Main/MainContainerView.swift`, `Sources/Core/Tabs/TerminalTabState.swift`, `Tests/MarkAgentTests/TerminalTabStateTests.swift`
