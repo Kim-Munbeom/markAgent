@@ -74,6 +74,7 @@
 74. [세션 70: SwiftPM 리소스 패키징 크래시 수정 및 v1.8.4 릴리즈](#세션-70-swiftpm-리소스-패키징-크래시-수정-및-v184-릴리즈)
 75. [세션 71: Codex 사용량 스냅샷 선택 수정 및 v1.8.5 릴리즈](#세션-71-codex-사용량-스냅샷-선택-수정-및-v185-릴리즈)
 76. [세션 72: Claude 상태줄 연동과 프로젝트 탐색 개선 및 v1.8.6 릴리즈](#세션-72-claude-상태줄-연동과-프로젝트-탐색-개선-및-v186-릴리즈)
+77. [세션 73: 사이드바·터미널·시스템 상태 사용성 개선](#세션-73-사이드바터미널시스템-상태-사용성-개선)
 
 ---
 
@@ -170,6 +171,7 @@
 | 87 | SwiftPM 리소스 패키징 크래시 수정 및 v1.8.4 릴리즈 | Ghostty와 HighlightSwift 리소스 번들을 서명 가능한 앱 경로에 포함하고 패키지 리소스 우선 해석을 보강해 앱 기동 크래시를 수정한 뒤 앱 번들 버전 1.8.4 갱신 |
 | 88 | Codex 사용량 스냅샷 선택 수정 및 v1.8.5 릴리즈 | 최상위 Codex rateLimits를 우선하도록 파서를 수정하고 회귀 테스트와 실제 앱 검증 후 앱 번들 버전 1.8.5로 승격 |
 | 89 | Claude 상태줄 연동과 프로젝트 탐색 개선 및 v1.8.6 릴리즈 | Claude 자격 증명 조회를 공식 상태줄 수신으로 대체하고 프로젝트·탭 단축키, 기본 이름, 행 정렬과 드래그 순서 저장을 개선해 v1.8.6 배포 준비 |
+| 90 | 현재 SDK의 Markdown Document 타입 충돌 해결 | Markdown.Document로 타입을 한정해 기존 컴파일 실패를 해소하고 사용성 개선의 검증 기반 복구 |
 
 ---
 
@@ -3535,3 +3537,22 @@ Cmd+1은 기본 작업 공간, Cmd+2부터 Cmd+0은 사이드바 순서의 첫 �
 앱 short/build version을 `1.8.6`으로 갱신하고 이번 기능·회귀 테스트·문서를 `codex/v1.8.6-statusline-workspaces` 브랜치에서 준비한다. 최종 전체 테스트 307개가 통과했으며, Developer ID 서명·Apple 공증·stapling·압축 해제 후 codesign/Gatekeeper 검증을 수행한 뒤 dev PR과 main PR을 merge commit 방식으로 순차 병합한다. 최종 main merge commit에 `v1.8.6` 태그를 연결하고 검증한 `MarkAgent-v1.8.6.zip`을 GitHub Release 자산으로 게시한다. 기존 미추적 개인 파일과 과거 릴리즈 ZIP은 커밋에서 제외한다.
 
 변경 파일: `Sources/App/Info.plist`, `README.md`, `history.md`
+
+---
+
+## 세션 73: 사이드바·터미널·시스템 상태 사용성 개선
+
+> 날짜: 2026-09-29
+> 경로: ~/workspace/markAgent
+
+오른쪽 사이드바 상태 복원, 첫 스니펫 탭, 여러 줄 프롬프트, 터미널 검색, Git 컨트롤 위치, 실제 caffeinate 상태를 개선하고 누수 점검 후 버전 배포와 dev/main PR 병합을 진행하는 세션이다. 프로젝트별 상단 탭 바 표시·숨김과 터미널 Notification도 추가 요청됐다.
+
+### 대화 1: 검증을 막던 기존 SDK 타입 충돌 해소
+
+**사용자:**
+> 사이드바·프롬프트·터미널 검색·caffeinate 사용성을 개선하고 메모리 리크를 확인한 뒤 버전 배포와 dev/main PR 머지까지 진행해줘.
+
+**응답:**
+첫 집중 테스트 실행이 기존 `MarkdownRenderer.visitDocument`의 `Document` 타입 모호성으로 컴파일 단계에서 실패했다. `Markdown.Document`로 타입을 한정해 해결했으며, 이후 모듈 빌드와 집중 테스트 실행이 정상적으로 진행됐다. 렌더링 동작은 바꾸지 않았고 LSP 오류도 없었다.
+
+변경 파일: `Sources/Rendering/MarkdownRenderer.swift`
