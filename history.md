@@ -3642,3 +3642,15 @@ Ghostty의 OSC9/777 콜백을 macOS 알림에 연결하고 첫 실제 요청 시
 실제 검색·선택 스니펫·프로젝트 전환 후 두 터미널을 닫자 57건, 325872바이트의 누수가 검출됐다. `TerminalTab → TerminalTabState.onDirectoryChanged → TerminalTab` 순환 참조를 확인해 탭 캡처를 weak로 바꾸고 종료 시 작업 경로·닫기 콜백을 정리했다. weak tab 해제 회귀 테스트가 수정 전 실패하고 수정 후 통과했다. 같은 실제 종료 흐름을 반복한 최종 `leaks --noContent 91413` 결과는 0건/0바이트이며 전체 348개 테스트도 통과했다.
 
 변경 파일: `Sources/Views/Main/MainContainerView.swift`, `Sources/Core/Tabs/TerminalTabState.swift`, `Tests/MarkAgentTests/TerminalTabStateTests.swift`
+
+### 대화 10: 좁은 Raw Edit 화면 복구
+
+**사용자:**
+> 이 화면도 깨져
+
+**응답:**
+제공된 캡처의 문서 툴바와 편집 영역 침범을 네이티브 호스팅에서 폭 443 대 할당 320으로 재현했다. 툴바를 가로 스크롤로 바꿔 중앙 폭을 지키면서 모든 도구에 접근할 수 있게 했다. 스타일 재적용 중 선택 복원 콜백이 모델을 덮어쓰지 않도록 분리했고, 초기 높이가 0이던 거터도 clip view 높이를 따르게 했다.
+
+320pt/900pt 프레임·스크롤·선택 보존 회귀 테스트, 전체 348개 테스트와 서명 번들이 통과했다. 사용자 캡처로 침범 해소와 줄 번호를 확인했고, 실제 툴바 가로 스크롤로 마지막 코드 버튼에 접근했다. 실제 텍스트 입력과 Cmd+S 파일 저장 및 최종 프로세스 누수 0건도 확인했다.
+
+변경 파일: `Sources/Views/Tabs/MarkdownTabView.swift`, `Sources/Views/EditorView.swift`, `Tests/MarkAgentTests/MarkdownTabLayoutTests.swift`
