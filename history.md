@@ -3567,3 +3567,15 @@ Cmd+1은 기본 작업 공간, Cmd+2부터 Cmd+0은 사이드바 순서의 첫 �
 IOKit으로 실제 유휴 절전 방지 상태를 조회하고 앱 소유 상태와 분리했다. 외부 앱의 assertion은 해제하지 않고 하단에 외부 활성 상태를 표시한다. 앱 assertion을 끌 때 즉시 다시 조회하며 종료 시 남은 소유 assertion을 정리한다. 실제 OS 실행에서 집계값 `1`과 생성용 상수 `255`의 차이를 발견해 `boolValue`로 수정하고 실제 IOKit 회귀 테스트를 추가했다. 관련 테스트 13개, 전체 테스트 345개가 통과했고 직접 실행한 OS 검증에서 본인 assertion `0→1→0`과 외부 상태 보존을 확인했다. GUI 표시 검증은 화면 기록 권한 적용 후 진행한다.
 
 변경 파일: `Sources/Core/SystemStatusModel.swift`, `Sources/Views/Main/BottomStatusBar.swift`, `Tests/MarkAgentTests/SystemStatusModelTests.swift`, 한국어·영어 번역
+
+### 대화 3: 오른쪽 사이드바 상태 복원과 첫 탭
+
+**사용자:**
+> right sidebar의 열림/닫힘 상태를 기억하지 못해서 불편해. right sidebar에서 처음 나오는 항목이 첫밴째 탭이 아니어서 불편해.
+
+**응답:**
+오른쪽 사이드바 표시 상태를 UserDefaults에 저장하고 새 그룹에서 복원하도록 했다. 기존 그룹 사이의 표시 상태와 선택 도구는 독립적으로 유지한다. 최초 선택은 첫 번째 스니펫 탭으로 맞췄다.
+
+회귀 테스트에서 최초 선택과 재생성 후 상태 복원의 실패를 먼저 확인한 뒤 수정했다. 실제 QA 앱을 각각 열린 상태와 닫힌 상태로 종료·재실행하여 두 설정의 복원을 확인했다. 사용자 제공 캡처에서도 첫 탭 선택을 확인했다. 최신 전체 테스트 346개가 통과했으며 현재까지 실제 조작 후 누수 점검은 0건이다. 알림·탭 닫기 이후의 최종 누수 점검과 배포는 후속 검증으로 진행한다.
+
+변경 파일: `Sources/Core/Tabs/RightUtilityRouting.swift`, `Sources/Core/Tabs/TabGroupState.swift`, `Tests/MarkAgentTests/RightUtilityRoutingTests.swift`, `Tests/MarkAgentTests/TabGroupStateTests.swift`
