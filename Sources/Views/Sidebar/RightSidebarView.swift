@@ -56,12 +56,6 @@ struct RightSidebarView: View {
                 utilityHeader
                 Divider()
 
-                TitlebarGitBranchView(status: gitRepositoryStatus)
-                    .padding(.horizontal, 8)
-                    .frame(height: 32)
-
-                Divider()
-
                 GeometryReader { geometry in
                     selectedBody(width: geometry.size.width)
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -126,17 +120,23 @@ struct RightSidebarView: View {
         case .timeline:
             AgentTimelineSidebarView(store: timelineStore)
         case .gitHistory:
-            GitUtilitySidebarView(
-                mode: gitMode,
-                onSelectMode: onSelectGitMode,
-                historyStore: gitHistoryStore,
-                repositoryRoot: repositoryRoot,
-                gitDiffState: gitDiffState,
-                isGitDiffTabOpen: isGitDiffTabOpen,
-                onOpenFileInTab: onOpenGitFileInTab,
-                onFocusFileInTab: onFocusGitFileInTab,
-                mentionedFileIDs: mentionedFileIDs
-            )
+            VStack(spacing: 0) {
+                TitlebarGitBranchView(status: gitRepositoryStatus)
+                    .padding(.horizontal, 8)
+                    .frame(height: 32)
+                Divider()
+                GitUtilitySidebarView(
+                    mode: gitMode,
+                    onSelectMode: onSelectGitMode,
+                    historyStore: gitHistoryStore,
+                    repositoryRoot: repositoryRoot,
+                    gitDiffState: gitDiffState,
+                    isGitDiffTabOpen: isGitDiffTabOpen,
+                    onOpenFileInTab: onOpenGitFileInTab,
+                    onFocusFileInTab: onFocusGitFileInTab,
+                    mentionedFileIDs: mentionedFileIDs
+                )
+            }
         case .fileBrowser:
             FileBrowserSidebar(
                 scanner: scanner,

@@ -32,7 +32,7 @@ struct MarkdownRenderer: MarkupVisitor {
 
     // MARK: Document
 
-    mutating func visitDocument(_ document: Document) -> AnyView {
+    mutating func visitDocument(_ document: Markdown.Document) -> AnyView {
         let baseURL = self.baseURL
         return AnyView(
             LazyVStack(alignment: .leading, spacing: 12) {

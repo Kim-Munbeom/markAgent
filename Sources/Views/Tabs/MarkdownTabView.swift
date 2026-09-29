@@ -74,6 +74,16 @@ struct MarkdownTabView: View {
     }
 
     private var localHeaderToolbar: some View {
+        // 버튼 행의 고유 폭이 좁은 중앙 영역보다 넓어도 부모 스택을 넓히지 않도록 가로 스크롤로 감싼다.
+        ScrollView(.horizontal, showsIndicators: false) {
+            localHeaderToolbarItems
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+        }
+        .background(appColors?.panel ?? Color(NSColor.controlBackgroundColor))
+    }
+
+    private var localHeaderToolbarItems: some View {
         HStack(spacing: 12) {
             HStack(spacing: 6) {
                 if state.document.supportsPreview {
@@ -101,12 +111,7 @@ struct MarkdownTabView: View {
                 .disabled(state.document.viewMode != .rawEdit)
                 .opacity(state.document.viewMode == .rawEdit ? 1 : 0.45)
             }
-
-            Spacer(minLength: 0)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(appColors?.panel ?? Color(NSColor.controlBackgroundColor))
     }
 
     private func modeButton(

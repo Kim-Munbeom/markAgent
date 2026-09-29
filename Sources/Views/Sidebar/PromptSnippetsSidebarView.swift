@@ -76,9 +76,9 @@ struct PromptSnippetsSidebarView: View {
     private func snippetRow(_ snippet: PromptSnippet) -> some View {
         HStack(alignment: .top, spacing: 8) {
             VStack(alignment: .leading, spacing: 4) {
-                Text(preview(for: snippet.body))
+                Text(snippet.body)
                     .font(.system(size: 13, weight: .medium))
-                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
                     .multilineTextAlignment(.leading)
                 if copiedSnippetID == snippet.id {
                     Text("복사됨")
@@ -144,16 +144,6 @@ struct PromptSnippetsSidebarView: View {
         }
     }
 
-    private func preview(for body: String) -> String {
-        let firstNonEmptyLine = body
-            .split(whereSeparator: \.isNewline)
-            .map(String.init)
-            .first { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-        let source = firstNonEmptyLine ?? body
-        let trimmed = source.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmed.count > 80 else { return trimmed }
-        return String(trimmed.prefix(80)) + "…"
-    }
 }
 
 private struct PromptSnippetEditorState: Identifiable {

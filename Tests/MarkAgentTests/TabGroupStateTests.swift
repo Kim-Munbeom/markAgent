@@ -3,6 +3,23 @@ import XCTest
 
 final class TabGroupStateTests: XCTestCase {
     @MainActor
+    func testNewGroupRestoresLastSidebarVisibility() throws {
+        let suiteName = "TabGroupStateTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let first = TabGroupState(defaults: defaults)
+        XCTAssertFalse(first.rightUtilityRoute.isVisible)
+
+        first.toggleRightUtility()
+        let reopened = TabGroupState(defaults: defaults)
+        XCTAssertTrue(reopened.rightUtilityRoute.isVisible)
+
+        reopened.toggleRightUtility()
+        XCTAssertFalse(TabGroupState(defaults: defaults).rightUtilityRoute.isVisible)
+        XCTAssertTrue(first.rightUtilityRoute.isVisible)
+    }
+
+    @MainActor
     func testGroupsOwnIndependentGitTimelineAndHistoryState() {
         let first = TabGroupState(workingDirectory: URL(fileURLWithPath: "/tmp/one"))
         let second = TabGroupState(workingDirectory: URL(fileURLWithPath: "/tmp/two"))

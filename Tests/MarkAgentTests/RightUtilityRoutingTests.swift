@@ -2,6 +2,15 @@ import XCTest
 @testable import ma
 
 final class RightUtilityRoutingTests: XCTestCase {
+    func testFirstRevealUsesFirstSidebarTab() {
+        var route = RightUtilityRouteState()
+
+        route.handle(.toggleVisibility)
+
+        XCTAssertTrue(route.isVisible)
+        XCTAssertEqual(route.selectedTab, RightSidebarTab.allCases.first)
+    }
+
     func testSelectionRevealsRequestedOuterTool() {
         var route = RightUtilityRouteState()
 

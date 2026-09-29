@@ -14,14 +14,20 @@ final class TabCollection {
     private var allTabGroups: [TabGroupID: TabGroupState] = [:]
     private var workspaces: [TabWorkspaceID: WorkspaceState]
     private(set) var activeWorkspaceID: TabWorkspaceID
+    /// 상단 탭 바를 숨긴 workspace 집합. 탭 데이터와 분리해 두어 아직 열리지 않은 프로젝트의 설정도 보존한다.
+    private var hiddenTabBarWorkspaceIDs: Set<TabWorkspaceID>
+    private let defaults: UserDefaults
     weak var dirtyPrompter: DirtyDocumentPrompting?
+    var onTerminalNotification: ((UUID, String, String) -> Void)?
 
-    init(unscopedRootDirectory: URL? = nil) {
+    init(unscopedRootDirectory: URL? = nil, defaults: UserDefaults = .standard) {
         let rootDirectory = unscopedRootDirectory?.standardizedFileURL
         self.activeWorkspaceID = .unscoped
         self.workspaces = [
             .unscoped: WorkspaceState(rootDirectory: rootDirectory)
         ]
+        self.defaults = defaults
+        self.hiddenTabBarWorkspaceIDs = Self.loadHiddenTabBarWorkspaceIDs(from: defaults)
     }
 
     var tabs: [any MarkAgentTab] {
@@ -74,6 +80,11 @@ final class TabCollection {
 
     var hasTabs: Bool {
         !tabs.isEmpty
+    }
+
+    /// 활성 workspace의 상단 탭 바 숨김 여부. workspace를 전환하면 해당 workspace의 설정으로 바뀐다.
+    var isTabBarHidden: Bool {
+        isTabBarHidden(in: activeWorkspaceID)
     }
 
     var activeWorkingDirectory: URL? {
@@ -150,6 +161,35 @@ final class TabCollection {
         workspaces[workspaceID]?.rootDirectory
     }
 
+    /// 지정 workspace의 상단 탭 바가 숨겨져 있는지 여부.
+    /// 아직 `ensureWorkspace`로 만들어지지 않은 프로젝트에 대해서도 저장된 설정을 그대로 돌려준다.
+    func isTabBarHidden(in workspaceID: TabWorkspaceID) -> Bool {
+        hiddenTabBarWorkspaceIDs.contains(workspaceID)
+    }
+
+    /// 지정 workspace의 상단 탭 바 숨김 여부를 바꾸고 즉시 영속화한다.
+    /// 탭 목록, 활성 탭, 그룹 상태는 건드리지 않으므로 숨겨진 동안에도 세션과 키보드 탐색이 그대로 유지된다.
+    func setTabBarHidden(_ isHidden: Bool, in workspaceID: TabWorkspaceID) {
+        let didChange: Bool
+        if isHidden {
+            didChange = hiddenTabBarWorkspaceIDs.insert(workspaceID).inserted
+        } else {
+            didChange = hiddenTabBarWorkspaceIDs.remove(workspaceID) != nil
+        }
+        guard didChange else { return }
+        saveHiddenTabBarWorkspaceIDs()
+    }
+
+    /// 활성 workspace(또는 지정 workspace)의 탭 바 표시 상태를 반전하고, 반전 후의 숨김 여부를 돌려준다.
+    /// macOS View 메뉴의 토글 항목이 이 API를 사용한다.
+    @discardableResult
+    func toggleTabBarHidden(in workspaceID: TabWorkspaceID? = nil) -> Bool {
+        let targetID = workspaceID ?? activeWorkspaceID
+        let isHidden = !isTabBarHidden(in: targetID)
+        setTabBarHidden(isHidden, in: targetID)
+        return isHidden
+    }
+
     func tabs(in workspaceID: TabWorkspaceID) -> [any MarkAgentTab] {
         guard let tabIDs = workspaces[workspaceID]?.tabIDs else { return [] }
         let tabByID = Dictionary(uniqueKeysWithValues: allTabs.map { ($0.id, $0) })
@@ -191,6 +231,9 @@ final class TabCollection {
         state.onDirectoryChanged = { [weak groupState] url in
             groupState?.updateWorkingDirectory(url)
             onDirectoryChanged?(url)
+        }
+        state.onDesktopNotification = { [weak self] title, body in
+            self?.onTerminalNotification?(id, title, body)
         }
 
         append(tab, to: targetWorkspaceID)
@@ -365,10 +408,12 @@ final class TabCollection {
         movingTabsTo destinationID: TabWorkspaceID = .unscoped
     ) -> Bool {
         guard workspaceID != .unscoped,
-              let source = workspaces[workspaceID],
               var destination = workspaces[destinationID] else {
             return false
         }
+        // 열기 전에 숨김 설정만 저장한 프로젝트를 삭제하는 경우도 정리한다.
+        setTabBarHidden(false, in: workspaceID)
+        guard let source = workspaces[workspaceID] else { return false }
 
         var migratedIDs: [UUID] = []
         var activeReplacementID: UUID?
@@ -533,5 +578,27 @@ final class TabCollection {
     private func removeOrphanedGroups() {
         let liveGroupIDs = Set(allTabs.compactMap(\.groupID))
         allTabGroups = allTabGroups.filter { liveGroupIDs.contains($0.key) }
+    }
+
+    // MARK: - 탭 바 숨김 상태 영속화
+
+    /// 탭 바를 숨긴 workspace 목록을 UserDefaults에 저장할 때 쓰는 키.
+    /// 값은 `TabWorkspaceID.storageKey` 문자열 배열이며, 미분류("unscoped")와 프로젝트 UUID가 한 배열에 공존한다.
+    private static let hiddenTabBarWorkspacesDefaultsKey = "hiddenTabBarWorkspaceIDs"
+
+    private static func loadHiddenTabBarWorkspaceIDs(from defaults: UserDefaults) -> Set<TabWorkspaceID> {
+        let storedKeys = defaults.stringArray(forKey: hiddenTabBarWorkspacesDefaultsKey) ?? []
+        // 해석할 수 없는 항목(손상된 값 등)은 조용히 버려 기본값(표시)으로 복원한다.
+        return Set(storedKeys.compactMap(TabWorkspaceID.init(storageKey:)))
+    }
+
+    private func saveHiddenTabBarWorkspaceIDs() {
+        // 저장 순서를 고정해 같은 상태면 항상 같은 값이 기록되도록 한다.
+        let storedKeys = hiddenTabBarWorkspaceIDs.map(\.storageKey).sorted()
+        if storedKeys.isEmpty {
+            defaults.removeObject(forKey: Self.hiddenTabBarWorkspacesDefaultsKey)
+        } else {
+            defaults.set(storedKeys, forKey: Self.hiddenTabBarWorkspacesDefaultsKey)
+        }
     }
 }

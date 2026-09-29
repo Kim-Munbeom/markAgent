@@ -15,7 +15,9 @@ final class TerminalTabState {
     var didStart: Bool = false
     var onCloseRequested: (() -> Void)?
     var onDirectoryChanged: ((URL) -> Void)?
+    var onDesktopNotification: ((String, String) -> Void)?
     weak var terminalView: AppTerminalView?
+    let search = TerminalSearchState()
     private let userConfigProvider: () -> GhosttyConfig?
 
     init(
@@ -226,11 +228,22 @@ final class TerminalTabState {
     }
 
     func close() {
+        search.disconnect()
+        onDirectoryChanged = nil
+        onCloseRequested = nil
+        onDesktopNotification = nil
         terminalViewState.onClose = nil
         didStart = false
     }
 
     func sendConfiguredKeybind(_ event: NSEvent, key: String, modifiers: EventModifierMask) -> Bool {
+        if (terminalView as? SearchAwareTerminalView)?.handleTerminalSearchShortcut(event) == true {
+            return true
+        }
+        // 검색 입력 필드에서는 사용자 터미널 키 바인딩이 텍스트 편집을 가로채지 않는다.
+        if (terminalView as? SearchAwareTerminalView)?.searchBar?.ownsFirstResponder == true {
+            return false
+        }
         guard let keybind = keybinds.first(where: { $0.matches(key: key, modifiers: modifiers) }) else {
             return false
         }

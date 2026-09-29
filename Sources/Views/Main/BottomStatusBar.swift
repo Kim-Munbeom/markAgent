@@ -48,12 +48,14 @@ struct BottomStatusBar: View {
 
             Button {
                 Task {
-                    await systemStatus.setCaffeinateEnabled(!systemStatus.isCaffeinateEnabled)
+                    await systemStatus.setCaffeinateEnabled(
+                        !systemStatus.isCaffeinateOwnedByApp
+                    )
                 }
             } label: {
                 HStack(spacing: 4) {
                     Image(systemName: "cup.and.saucer")
-                    Text(systemStatus.isCaffeinateEnabled ? "On" : "Off")
+                    Text(caffeinateStatusText)
                     Circle()
                         .fill(
                             systemStatus.isCaffeinateEnabled
@@ -64,13 +66,9 @@ struct BottomStatusBar: View {
                 }
             }
             .buttonStyle(.plain)
-            .help(
-                systemStatus.isCaffeinateEnabled
-                    ? String(localized: "MarkAgent가 소유한 절전 방지 assertion 끄기")
-                    : String(localized: "MarkAgent 절전 방지 assertion 생성")
-            )
+            .help(caffeinateHelpText)
             .accessibilityLabel("Caffeinate")
-            .accessibilityValue(systemStatus.isCaffeinateEnabled ? "On" : "Off")
+            .accessibilityValue(caffeinateStatusText)
             .accessibilityIdentifier("status-caffeinate")
 
             HStack(spacing: 5) {
@@ -136,6 +134,23 @@ struct BottomStatusBar: View {
             fromByteCount: Int64(clamping: bytes),
             countStyle: .memory
         )
+    }
+
+    private var caffeinateStatusText: String {
+        if systemStatus.isCaffeinateOwnedByApp {
+            return "On"
+        }
+        return systemStatus.isCaffeinateEnabled ? String(localized: "External") : "Off"
+    }
+
+    private var caffeinateHelpText: String {
+        if systemStatus.isCaffeinateOwnedByApp {
+            return String(localized: "MarkAgent가 소유한 절전 방지 assertion 끄기")
+        }
+        if systemStatus.isCaffeinateEnabled {
+            return String(localized: "외부 절전 방지는 유지하고 MarkAgent assertion 생성")
+        }
+        return String(localized: "MarkAgent 절전 방지 assertion 생성")
     }
 
     private var appColors: TerminalAppColors? {
