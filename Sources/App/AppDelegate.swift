@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
+import UserNotifications
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -23,6 +24,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var rootHostingView: NSHostingView<AnyView>?
     private var searchKeyMonitor: Any?
     private var claudeUsageObserver: NSObjectProtocol?
+    private var notificationCenter: UNUserNotificationCenter?
+    private var terminalNotificationController: TerminalNotificationController?
 
     override convenience init() {
         self.init(projectStore: ProjectStore())
@@ -56,6 +59,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.claudeUsageObserver = nil
         super.init()
         tabs.dirtyPrompter = dirtyPrompter
+    }
+
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        let center = UNUserNotificationCenter.current()
+        let controller = TerminalNotificationController(operations: .live(center: center)) { [weak self] tabID in
+            _ = self?.activateTerminalNotification(tabID)
+        }
+        notificationCenter = center
+        terminalNotificationController = controller
+        center.delegate = controller
+        tabs.onTerminalNotification = { [weak controller] tabID, title, body in
+            Task { @MainActor [weak controller] in
+                do {
+                    try await controller?.send(tabID: tabID, title: title, body: body)
+                } catch {
+                    NSLog("터미널 Notification 전달 실패: \(error.localizedDescription)")
+                }
+            }
+        }
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -95,6 +117,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        tabs.onTerminalNotification = nil
+        notificationCenter?.delegate = nil
+        terminalNotificationController = nil
+        notificationCenter = nil
         subscriptionStatus.stopPolling()
         systemStatus.stopSampling()
         if let searchKeyMonitor {
@@ -416,6 +442,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         viewMenu.addItem(.separator())
 
+        let toggleWorkspaceTabBarItem = NSMenuItem(
+            title: String(localized: tabs.isTabBarHidden ? "Show Tab Bar" : "Hide Tab Bar"),
+            action: #selector(toggleWorkspaceTabBar),
+            keyEquivalent: ""
+        )
+        toggleWorkspaceTabBarItem.target = self
+        toggleWorkspaceTabBarItem.identifier = NSUserInterfaceItemIdentifier("workspace-tabbar-toggle")
+        viewMenu.addItem(toggleWorkspaceTabBarItem)
+
         let toggleLeftSidebarItem = NSMenuItem(title: String(localized: "Toggle Left Sidebar"), action: #selector(toggleLeftSidebar), keyEquivalent: "s")
         toggleLeftSidebarItem.keyEquivalentModifierMask = [.command, .option]
         toggleLeftSidebarItem.target = self
@@ -492,7 +527,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard let menu else { return }
 
         let toggleTabBarSelector = NSSelectorFromString("toggleTabBar:")
-        for item in menu.items where item.action == toggleTabBarSelector || item.title == "Show Tab Bar" {
+        for item in menu.items where item.action != #selector(toggleWorkspaceTabBar)
+            && (item.action == toggleTabBarSelector || item.title == "Show Tab Bar") {
             menu.removeItem(item)
         }
     }
@@ -706,6 +742,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    @discardableResult
+    func activateTerminalNotification(_ tabID: UUID) -> Bool {
+        guard let terminal = tabs.allTabs.first(where: { $0.id == tabID }) as? TerminalTab,
+              let workspaceID = tabs.workspaceID(forTabID: tabID),
+              tabs.selectWorkspace(workspaceID)
+        else { return false }
+
+        tabs.selectTab(id: tabID)
+        syncActiveWorkspaceDirectory(fallback: terminal.workingDirectory)
+        if let window {
+            window.makeKeyAndOrderFront(nil)
+            NSRunningApplication.current.activate()
+            if let view = terminal.state.terminalView {
+                TerminalFocusPolicy.requestFocus(view, isActive: { [weak tabs] in
+                    tabs?.isActiveTab(id: tabID) == true
+                })
+            }
+        }
+        return true
+    }
+
     private func syncActiveWorkspaceDirectory(fallback: URL) {
         let activeDirectory = tabs.activeWorkingDirectory ?? fallback
         directoryScanner.setDirectory(activeDirectory)
@@ -846,6 +903,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         updateViewMenuState()
     }
 
+    @objc private func toggleWorkspaceTabBar() {
+        tabs.toggleTabBarHidden()
+        updateViewMenuState()
+    }
+
     @objc private func toggleLeftSidebar() {
         UserDefaults.standard.set(!isLeftSidebarVisible, forKey: leftSidebarVisibleDefaultsKey)
         updateViewMenuState()
@@ -974,6 +1036,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
               let viewMenu = application.mainMenu?.item(withTitle: String(localized: "View"))?.submenu
         else { return }
         let document = tabs.activeMarkdownTab?.state.document
+        viewMenu.items.first { $0.action == #selector(toggleWorkspaceTabBar) }?.title =
+            String(localized: tabs.isTabBarHidden ? "Show Tab Bar" : "Hide Tab Bar")
         viewMenu.items.first { $0.action == #selector(toggleViewMode) }?.state = document?.viewMode == .preview ? .on : .off
         viewMenu.items.first { $0.action == #selector(showRawView) }?.state = document?.viewMode == .rawEdit ? .on : .off
         viewMenu.items.first { $0.action == #selector(toggleDiff) }?.isEnabled = document?.diffResult != nil
@@ -1085,6 +1149,9 @@ extension AppDelegate: NSWindowDelegate {
 extension AppDelegate: NSMenuItemValidation {
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         switch menuItem.action {
+        case #selector(toggleWorkspaceTabBar):
+            menuItem.title = String(localized: tabs.isTabBarHidden ? "Show Tab Bar" : "Hide Tab Bar")
+            return true
         case #selector(gotoWorkspace(_:)):
             menuItem.title = workspaceShortcutTitle(number: menuItem.tag)
             return menuItem.tag == 1 || projectStore.projects.indices.contains(menuItem.tag - 2)

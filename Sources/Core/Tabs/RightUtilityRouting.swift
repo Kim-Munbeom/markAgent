@@ -9,7 +9,7 @@ enum RightUtilityAction: Equatable {
 
 struct RightUtilityRouteState: Equatable {
     var isVisible = false
-    var selectedTab: RightSidebarTab = .gitHistory
+    var selectedTab: RightSidebarTab = .snippets
 
     @discardableResult
     mutating func handle(_ action: RightUtilityAction) -> SidebarSearchMode? {

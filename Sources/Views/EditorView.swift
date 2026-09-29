@@ -305,7 +305,6 @@ private struct MarkdownTextEditor: NSViewRepresentable {
 
         let textView = NSTextView(frame: .zero, textContainer: textContainer)
 
-        textView.delegate = context.coordinator
         textView.string = text
         textView.font = rendersMarkdownStyle
             ? .systemFont(ofSize: 18)
@@ -332,6 +331,7 @@ private struct MarkdownTextEditor: NSViewRepresentable {
         context.coordinator.appColors = appColors
         context.coordinator.resetTextMetrics(for: text)
         context.coordinator.applyMarkdownStyleIfNeeded(to: textView, force: true)
+        textView.delegate = context.coordinator
         return scrollView
     }
 
@@ -409,6 +409,7 @@ private struct MarkdownTextEditor: NSViewRepresentable {
             gutter = existing
         } else {
             gutter = EditorLineNumberGutterView(frame: .zero)
+            gutter.autoresizingMask = [.height]
             scrollView.contentView.addSubview(gutter, positioned: .above, relativeTo: nil)
         }
 
@@ -486,13 +487,19 @@ private struct MarkdownTextEditor: NSViewRepresentable {
 
         func textViewDidChangeSelection(_ notification: Notification) {
             guard let textView = notification.object as? NSTextView else { return }
-            selectedRange = textView.selectedRange()
+            let range = textView.selectedRange()
+            if selectedRange != range {
+                selectedRange = range
+            }
             updateCursorPosition(textView: textView)
         }
 
         @MainActor
         func updateCursorPosition(textView: NSTextView) {
-            cursorPosition = CursorPosition(lineIndex.cursorPosition(for: textView.selectedRange().location))
+            let position = CursorPosition(lineIndex.cursorPosition(for: textView.selectedRange().location))
+            if cursorPosition != position {
+                cursorPosition = position
+            }
         }
 
         func resetTextMetrics(for text: String) {
@@ -543,6 +550,9 @@ private struct MarkdownTextEditor: NSViewRepresentable {
         @MainActor
         func applyMarkdownStyle(to textView: NSTextView) {
             let selection = textView.selectedRange()
+            let delegate = textView.delegate
+            textView.delegate = nil
+            defer { textView.delegate = delegate }
             let fullRange = NSRange(location: 0, length: (textView.string as NSString).length)
             let fontSize: CGFloat = rendersMarkdownStyle ? 18 : NSFont.systemFontSize
             let baseFont = rendersMarkdownStyle

@@ -1,8 +1,132 @@
 import Foundation
+import Observation
 import XCTest
 @testable import ma
 
 final class SystemStatusModelTests: XCTestCase {
+    @MainActor
+    func testLiveSamplingDetectsAnAssertionNotOwnedByTheModel() async throws {
+        let operations = SystemStatusModel.Operations.live
+        let assertionID = try operations.createAssertion()
+        defer { XCTAssertNoThrow(try operations.releaseAssertion(assertionID)) }
+        let model = SystemStatusModel()
+
+        await model.sampleCaffeinateActivity()
+
+        XCTAssertTrue(model.isCaffeinateEnabled)
+        XCTAssertFalse(model.isCaffeinateOwnedByApp)
+    }
+
+    @MainActor
+    func testExternalAssertionSampleMarksCaffeinateActiveWithoutAppOwnership() async {
+        let recorder = CaffeinateOperationRecorder(
+            assertionID: 42,
+            sampledActivity: [true, false]
+        )
+        let model = SystemStatusModel(operations: recorder.operations)
+
+        await model.sampleCaffeinateActivity()
+
+        XCTAssertTrue(model.isCaffeinateEnabled)
+        XCTAssertFalse(model.isCaffeinateOwnedByApp)
+
+        await model.sampleCaffeinateActivity()
+
+        XCTAssertFalse(model.isCaffeinateEnabled)
+        XCTAssertFalse(model.isCaffeinateOwnedByApp)
+    }
+
+    @MainActor
+    func testExternalActivitySurvivesAppOwnedAssertionToggle() async {
+        let recorder = CaffeinateOperationRecorder(
+            assertionID: 42,
+            sampledActivity: [true, true, false]
+        )
+        let model = SystemStatusModel(operations: recorder.operations)
+
+        await model.sampleCaffeinateActivity()
+        await model.setCaffeinateEnabled(false)
+
+        XCTAssertTrue(model.isCaffeinateEnabled)
+        XCTAssertFalse(model.isCaffeinateOwnedByApp)
+        XCTAssertTrue(recorder.releasedAssertionIDs.isEmpty)
+
+        await model.setCaffeinateEnabled(true)
+
+        XCTAssertTrue(model.isCaffeinateEnabled)
+        XCTAssertTrue(model.isCaffeinateOwnedByApp)
+
+        await model.setCaffeinateEnabled(false)
+
+        XCTAssertTrue(model.isCaffeinateEnabled)
+        XCTAssertFalse(model.isCaffeinateOwnedByApp)
+        XCTAssertEqual(recorder.releasedAssertionIDs, [42])
+
+        await model.sampleCaffeinateActivity()
+
+        XCTAssertFalse(model.isCaffeinateEnabled)
+    }
+
+    @MainActor
+    func testReleasingOwnedAssertionRefreshesSampledActivityImmediately() async {
+        let recorder = CaffeinateOperationRecorder(
+            assertionID: 61,
+            sampledActivity: [true, false]
+        )
+        let model = SystemStatusModel(operations: recorder.operations)
+
+        await model.setCaffeinateEnabled(true)
+        await model.sampleCaffeinateActivity()
+
+        XCTAssertTrue(model.isCaffeinateEnabled)
+        XCTAssertTrue(model.isCaffeinateOwnedByApp)
+
+        await model.setCaffeinateEnabled(false)
+
+        XCTAssertFalse(model.isCaffeinateEnabled)
+        XCTAssertFalse(model.isCaffeinateOwnedByApp)
+        XCTAssertEqual(recorder.releasedAssertionIDs, [61])
+    }
+
+    @MainActor
+    func testSamplingImmediatelyRefreshesMemoryAndCaffeinateActivity() async {
+        let stateCommitted = expectation(description: "observable state committed")
+        let recorder = SamplingOperationRecorder()
+        let model = SystemStatusModel(operations: recorder.operations)
+
+        withObservationTracking {
+            _ = model.isCaffeinateEnabled
+        } onChange: {
+            stateCommitted.fulfill()
+        }
+
+        model.startSampling()
+        await fulfillment(of: [stateCommitted], timeout: 1)
+        model.stopSampling()
+
+        XCTAssertEqual(model.residentMemoryBytes, 512)
+        XCTAssertTrue(model.isCaffeinateEnabled)
+        XCTAssertFalse(model.isCaffeinateOwnedByApp)
+    }
+
+    @MainActor
+    func testDeinitReleasesOwnedAssertion() async {
+        let assertionReleased = expectation(description: "owned assertion released")
+        let recorder = DeinitOperationRecorder(
+            assertionID: 73,
+            assertionReleased: assertionReleased
+        )
+        var model: SystemStatusModel? = SystemStatusModel(operations: recorder.operations)
+
+        await model?.setCaffeinateEnabled(true)
+        XCTAssertTrue(model?.isCaffeinateOwnedByApp == true)
+
+        model = nil
+
+        await fulfillment(of: [assertionReleased], timeout: 1)
+        XCTAssertEqual(recorder.releasedAssertionIDs, [73])
+    }
+
     @MainActor
     func testEnablingTwiceCreatesOnlyOneAssertionAndDisablingReleasesIt() async {
         let recorder = OperationRecorder(assertionID: 42)
@@ -155,6 +279,7 @@ private final class OperationRecorder: @unchecked Sendable {
                     mainThreadFlags.append(Thread.isMainThread)
                 }
             },
+            sampleCaffeinateActivity: { false },
             sampleResidentMemory: { [self] in
                 lock.withLock {
                     samples += 1
@@ -209,6 +334,7 @@ private final class BlockingOperationRecorder: @unchecked Sendable {
                     throw TestReleaseFailure.failed
                 }
             },
+            sampleCaffeinateActivity: { false },
             sampleResidentMemory: { 0 }
         )
     }
@@ -240,6 +366,7 @@ private final class FailingReleaseRecorder: @unchecked Sendable {
                 lock.withLock { releases += 1 }
                 throw TestReleaseFailure.failed
             },
+            sampleCaffeinateActivity: { false },
             sampleResidentMemory: { 0 }
         )
     }
@@ -249,4 +376,78 @@ private final class FailingReleaseRecorder: @unchecked Sendable {
 
 private enum TestReleaseFailure: Error {
     case failed
+}
+
+private final class CaffeinateOperationRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private let assertionID: SystemStatusModel.AssertionID
+    private var sampledActivity: [Bool]
+    private var releases: [SystemStatusModel.AssertionID] = []
+
+    init(
+        assertionID: SystemStatusModel.AssertionID,
+        sampledActivity: [Bool]
+    ) {
+        self.assertionID = assertionID
+        self.sampledActivity = sampledActivity
+    }
+
+    var operations: SystemStatusModel.Operations {
+        .init(
+            createAssertion: { [assertionID] in assertionID },
+            releaseAssertion: { [self] assertionID in
+                lock.withLock { releases.append(assertionID) }
+            },
+            sampleCaffeinateActivity: { [self] in
+                lock.withLock { sampledActivity.removeFirst() }
+            },
+            sampleResidentMemory: { 0 }
+        )
+    }
+
+    var releasedAssertionIDs: [SystemStatusModel.AssertionID] {
+        lock.withLock { releases }
+    }
+}
+
+private final class SamplingOperationRecorder: @unchecked Sendable {
+    var operations: SystemStatusModel.Operations {
+        .init(
+            createAssertion: { 1 },
+            releaseAssertion: { _ in },
+            sampleCaffeinateActivity: { true },
+            sampleResidentMemory: { 512 }
+        )
+    }
+}
+
+private final class DeinitOperationRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private let assertionID: SystemStatusModel.AssertionID
+    private let assertionReleased: XCTestExpectation
+    private var releases: [SystemStatusModel.AssertionID] = []
+
+    init(
+        assertionID: SystemStatusModel.AssertionID,
+        assertionReleased: XCTestExpectation
+    ) {
+        self.assertionID = assertionID
+        self.assertionReleased = assertionReleased
+    }
+
+    var operations: SystemStatusModel.Operations {
+        .init(
+            createAssertion: { [assertionID] in assertionID },
+            releaseAssertion: { [self] assertionID in
+                lock.withLock { releases.append(assertionID) }
+                assertionReleased.fulfill()
+            },
+            sampleCaffeinateActivity: { false },
+            sampleResidentMemory: { 0 }
+        )
+    }
+
+    var releasedAssertionIDs: [SystemStatusModel.AssertionID] {
+        lock.withLock { releases }
+    }
 }

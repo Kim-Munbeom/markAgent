@@ -9,20 +9,32 @@ final class TabGroupState {
     let gitHistoryStore: GitHistoryStore
     let timelineStore: AgentTimelineStore
     var gitUtilityMode: GitUtilityMode = .history
-    var rightUtilityRoute = RightUtilityRouteState()
+    private let defaults: UserDefaults
+    var rightUtilityRoute = RightUtilityRouteState() {
+        didSet {
+            if rightUtilityRoute.isVisible != oldValue.isVisible {
+                defaults.set(rightUtilityRoute.isVisible, forKey: "isRightSidebarVisible")
+            }
+        }
+    }
 
     init(
         id: TabGroupID = TabGroupID(),
         workingDirectory: URL? = nil,
         gitDiffState: GitDiffState = GitDiffState(),
         gitHistoryStore: GitHistoryStore = GitHistoryStore(),
-        timelineStore: AgentTimelineStore = AgentTimelineStore()
+        timelineStore: AgentTimelineStore = AgentTimelineStore(),
+        defaults: UserDefaults = .standard
     ) {
         self.id = id
         self.workingDirectory = workingDirectory
         self.gitDiffState = gitDiffState
         self.gitHistoryStore = gitHistoryStore
         self.timelineStore = timelineStore
+        self.defaults = defaults
+        self.rightUtilityRoute = RightUtilityRouteState(
+            isVisible: defaults.bool(forKey: "isRightSidebarVisible")
+        )
     }
 
     func updateWorkingDirectory(_ url: URL?) {

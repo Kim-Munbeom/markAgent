@@ -1,0 +1,22 @@
+diff --git a/Sources/GhosttyTerminal/InMemory/TerminalCallbackBridge.swift b/Sources/GhosttyTerminal/InMemory/TerminalCallbackBridge.swift
+--- a/Sources/GhosttyTerminal/InMemory/TerminalCallbackBridge.swift
++++ b/Sources/GhosttyTerminal/InMemory/TerminalCallbackBridge.swift
+@@ -156,6 +156,17 @@ final class TerminalCallbackBridge {
+                     )
+                 )
+-
++
++        case GHOSTTY_ACTION_SEARCH_TOTAL:
++            let total = action.action.search_total.total
++            (delegate as? any TerminalSurfaceSearchDelegate)?
++                .terminalDidUpdateSearchTotal(total < 0 ? nil : total)
++
++        case GHOSTTY_ACTION_SEARCH_SELECTED:
++            let selected = action.action.search_selected.selected
++            // 고정 엔진의 0 기반 인덱스를 UI용 1 기반으로 변환한다.
++            (delegate as? any TerminalSurfaceSearchDelegate)?
++                .terminalDidUpdateSearchSelected(selected < 0 ? nil : selected + 1)
++
+         default:
+             TerminalDebugLog.log(
+                 .actions,

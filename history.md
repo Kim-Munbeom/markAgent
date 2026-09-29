@@ -74,6 +74,7 @@
 74. [세션 70: SwiftPM 리소스 패키징 크래시 수정 및 v1.8.4 릴리즈](#세션-70-swiftpm-리소스-패키징-크래시-수정-및-v184-릴리즈)
 75. [세션 71: Codex 사용량 스냅샷 선택 수정 및 v1.8.5 릴리즈](#세션-71-codex-사용량-스냅샷-선택-수정-및-v185-릴리즈)
 76. [세션 72: Claude 상태줄 연동과 프로젝트 탐색 개선 및 v1.8.6 릴리즈](#세션-72-claude-상태줄-연동과-프로젝트-탐색-개선-및-v186-릴리즈)
+77. [세션 73: 사이드바·터미널·시스템 상태 사용성 개선](#세션-73-사이드바터미널시스템-상태-사용성-개선)
 
 ---
 
@@ -170,6 +171,9 @@
 | 87 | SwiftPM 리소스 패키징 크래시 수정 및 v1.8.4 릴리즈 | Ghostty와 HighlightSwift 리소스 번들을 서명 가능한 앱 경로에 포함하고 패키지 리소스 우선 해석을 보강해 앱 기동 크래시를 수정한 뒤 앱 번들 버전 1.8.4 갱신 |
 | 88 | Codex 사용량 스냅샷 선택 수정 및 v1.8.5 릴리즈 | 최상위 Codex rateLimits를 우선하도록 파서를 수정하고 회귀 테스트와 실제 앱 검증 후 앱 번들 버전 1.8.5로 승격 |
 | 89 | Claude 상태줄 연동과 프로젝트 탐색 개선 및 v1.8.6 릴리즈 | Claude 자격 증명 조회를 공식 상태줄 수신으로 대체하고 프로젝트·탭 단축키, 기본 이름, 행 정렬과 드래그 순서 저장을 개선해 v1.8.6 배포 준비 |
+| 90 | 현재 SDK의 Markdown Document 타입 충돌 해결 | Markdown.Document로 타입을 한정해 기존 컴파일 실패를 해소하고 사용성 개선의 검증 기반 복구 |
+| 91 | 실제 caffeinate 상태와 소유 assertion 분리 | 외부 유휴 절전 방지를 감지하고 MarkAgent assertion만 제어하며 실제 IOKit 생성·해제와 외부 상태 보존 검증 |
+| 92 | 사이드바·터미널 검색·알림·탭 바 개선과 날짜 버전 전환 | 실제 앱 검증, 348개 테스트, 탭 종료 누수 0건과 QA 정리를 완료하고 26.09.29 배포 준비 |
 
 ---
 
@@ -3535,3 +3539,131 @@ Cmd+1은 기본 작업 공간, Cmd+2부터 Cmd+0은 사이드바 순서의 첫 �
 앱 short/build version을 `1.8.6`으로 갱신하고 이번 기능·회귀 테스트·문서를 `codex/v1.8.6-statusline-workspaces` 브랜치에서 준비한다. 최종 전체 테스트 307개가 통과했으며, Developer ID 서명·Apple 공증·stapling·압축 해제 후 codesign/Gatekeeper 검증을 수행한 뒤 dev PR과 main PR을 merge commit 방식으로 순차 병합한다. 최종 main merge commit에 `v1.8.6` 태그를 연결하고 검증한 `MarkAgent-v1.8.6.zip`을 GitHub Release 자산으로 게시한다. 기존 미추적 개인 파일과 과거 릴리즈 ZIP은 커밋에서 제외한다.
 
 변경 파일: `Sources/App/Info.plist`, `README.md`, `history.md`
+
+---
+
+## 세션 73: 사이드바·터미널·시스템 상태 사용성 개선
+
+> 날짜: 2026-09-29
+> 경로: ~/workspace/markAgent
+
+오른쪽 사이드바 상태 복원, 첫 스니펫 탭, 여러 줄 프롬프트, 터미널 검색, Git 컨트롤 위치, 실제 caffeinate 상태를 개선하고 누수 점검 후 버전 배포와 dev/main PR 병합을 진행하는 세션이다. 프로젝트별 상단 탭 바 표시·숨김과 터미널 Notification도 추가 요청됐다.
+
+### 대화 1: 검증을 막던 기존 SDK 타입 충돌 해소
+
+**사용자:**
+> 사이드바·프롬프트·터미널 검색·caffeinate 사용성을 개선하고 메모리 리크를 확인한 뒤 버전 배포와 dev/main PR 머지까지 진행해줘.
+
+**응답:**
+첫 집중 테스트 실행이 기존 `MarkdownRenderer.visitDocument`의 `Document` 타입 모호성으로 컴파일 단계에서 실패했다. `Markdown.Document`로 타입을 한정해 해결했으며, 이후 모듈 빌드와 집중 테스트 실행이 정상적으로 진행됐다. 렌더링 동작은 바꾸지 않았고 LSP 오류도 없었다.
+
+변경 파일: `Sources/Rendering/MarkdownRenderer.swift`
+
+### 대화 2: 실제 caffeinate 상태 반영
+
+**사용자:**
+> caffeinate 상태를 확인하고 하단 토글 버튼에 반영해야해.
+
+**응답:**
+IOKit으로 실제 유휴 절전 방지 상태를 조회하고 앱 소유 상태와 분리했다. 외부 앱의 assertion은 해제하지 않고 하단에 외부 활성 상태를 표시한다. 앱 assertion을 끌 때 즉시 다시 조회하며 종료 시 남은 소유 assertion을 정리한다. 실제 OS 실행에서 집계값 `1`과 생성용 상수 `255`의 차이를 발견해 `boolValue`로 수정하고 실제 IOKit 회귀 테스트를 추가했다. 관련 테스트 13개, 전체 테스트 345개가 통과했고 직접 실행한 OS 검증에서 본인 assertion `0→1→0`과 외부 상태 보존을 확인했다. GUI 표시 검증은 화면 기록 권한 적용 후 진행한다.
+
+변경 파일: `Sources/Core/SystemStatusModel.swift`, `Sources/Views/Main/BottomStatusBar.swift`, `Tests/MarkAgentTests/SystemStatusModelTests.swift`, 한국어·영어 번역
+
+### 대화 3: 오른쪽 사이드바 상태 복원과 첫 탭
+
+**사용자:**
+> right sidebar의 열림/닫힘 상태를 기억하지 못해서 불편해. right sidebar에서 처음 나오는 항목이 첫밴째 탭이 아니어서 불편해.
+
+**응답:**
+오른쪽 사이드바 표시 상태를 UserDefaults에 저장하고 새 그룹에서 복원하도록 했다. 기존 그룹 사이의 표시 상태와 선택 도구는 독립적으로 유지한다. 최초 선택은 첫 번째 스니펫 탭으로 맞췄다.
+
+회귀 테스트에서 최초 선택과 재생성 후 상태 복원의 실패를 먼저 확인한 뒤 수정했다. 실제 QA 앱을 각각 열린 상태와 닫힌 상태로 종료·재실행하여 두 설정의 복원을 확인했다. 사용자 제공 캡처에서도 첫 탭 선택을 확인했다. 최신 전체 테스트 346개가 통과했으며 현재까지 실제 조작 후 누수 점검은 0건이다. 알림·탭 닫기 이후의 최종 누수 점검과 배포는 후속 검증으로 진행한다.
+
+변경 파일: `Sources/Core/Tabs/RightUtilityRouting.swift`, `Sources/Core/Tabs/TabGroupState.swift`, `Tests/MarkAgentTests/RightUtilityRoutingTests.swift`, `Tests/MarkAgentTests/TabGroupStateTests.swift`
+
+### 대화 4: 저장된 프롬프트 전체 본문 표시
+
+**사용자:**
+> 저장된 프롬프트의 첫줄만 나와서 불편해.
+
+**응답:**
+첫 번째 비어 있지 않은 줄과 80자만 추리던 미리보기 변환을 제거했다. 저장된 본문 전체를 여러 줄로 표시하고 세로 높이를 내용에 맞춘다. 실제 QA에서 세 줄 프롬프트를 저장한 뒤 사용자 캡처로 전체 표시를 확인했고, 클릭 복사 결과도 줄바꿈을 포함한 원문과 일치했다. 전체 테스트 346개와 실제 앱 누수 0건을 확인했다.
+
+변경 파일: `Sources/Views/Sidebar/PromptSnippetsSidebarView.swift`
+
+### 대화 5: Git 컨트롤을 Git 사이드바 내부로 이동
+
+**사용자:**
+> git init+ 버튼은 git 관련 right sidebar의 탭 내에서 나와야 해.
+
+**응답:**
+공통 사이드바 상단의 Git Init·브랜치 컨트롤을 Git 탭 본문으로 이동했다. 실제 앱에서 스니펫·타임라인·파일 브라우저에는 Git Init이 없고 Git 탭에만 표시되는 것을 확인했으며 사용자 캡처에서도 위치를 검증했다. 전체 테스트 346개와 서명 번들 빌드가 통과했다.
+
+변경 파일: `Sources/Views/Sidebar/RightSidebarView.swift`
+
+### 대화 6: 프로젝트별 상단 탭 바 표시·가리기
+
+**사용자:**
+> 프로젝트 내 탭 표시/가리기 기능도 추가해줘
+> 탭 표시 범위: 상단 탭 바 표시·숨김
+
+**응답:**
+기본 작업 공간과 각 프로젝트의 상단 탭 바 표시 설정을 별도로 저장한다. 프로젝트 문맥 메뉴와 보기 메뉴에서 복구할 수 있고, 탭과 터미널 내용은 유지한다. 실제 QA에서 A 숨김·B 독립 표시·A 복귀·재실행 복원·기본 작업 공간 복구를 확인했다. 표시와 숨김 및 프로젝트 왕복 전후에 동일한 셸 PID와 환경 변수가 유지됐으며, 관련 회귀를 포함한 전체 348개 테스트가 통과했다.
+
+변경 파일: `Sources/Core/Tabs/TabCollection.swift`, `Sources/Core/Tabs/TabWorkspaceID.swift`, `Sources/Views/Main/MainContainerView.swift`, `Sources/Views/Main/TabBarView.swift`, `Sources/Views/Sidebar/ProjectSidebar.swift`, `Sources/App/AppDelegate.swift`, `Tests/MarkAgentTests/TabBarVisibilityTests.swift`, 한국어·영어 번역
+
+### 대화 7: 터미널 화면·스크롤백 검색
+
+**사용자:**
+> 터미널 화면내 항목 검색 기능을 추가해야해.
+
+**응답:**
+Cmd+F 검색창, 실제 Ghostty 스크롤백 검색, 이전·다음 결과, 결과 없음, Escape 입력 복귀를 구현했다. 버전 가드된 소스 오버레이로 검색 콜백을 전달하며 0 기반 결과 번호를 화면의 1 기반 번호로 변환한다. 기존 Cmd+Shift+F/G와 선택 스니펫 단축키도 실제 앱에서 확인했다. 사용자 캡처로 검색 강조와 1/2 이동을 검증했고, 320pt에서 검색창이 터미널 폭을 늘리던 문제를 네이티브 회귀 테스트로 재현·수정했다. 전체 348개 테스트가 통과했다. Ghostty PR #23 포함 revision은 유지했다.
+
+변경 파일: `Sources/Core/Tabs/TerminalSearchState.swift`, `Sources/Core/Tabs/TerminalTabState.swift`, `Sources/Views/Tabs/TerminalSearchBar.swift`, `Sources/Views/Tabs/SearchAwareTerminalView.swift`, `Sources/Views/Tabs/TerminalTabView.swift`, `Tests/MarkAgentTests/TerminalSearchTests.swift`, `Tests/MarkAgentTests/TerminalSearchIntegrationTests.swift`, `Tests/MarkAgentTests/TerminalSearchLayoutTests.swift`, `scripts/patch-libghostty-resource-bundle.sh`, `scripts/patches/TerminalSurfaceSearchDelegate.swift`, `scripts/patches/libghostty-search-callbacks.patch`, 한국어·영어 번역
+
+### 대화 8: 터미널 Notification과 원래 탭 복귀
+
+**사용자:**
+> 추가로 터미널의 Notification 도 지원해줘.
+
+**응답:**
+Ghostty의 OSC9/777 콜백을 macOS 알림에 연결하고 첫 실제 요청 시 권한을 요청한다. 알림 클릭은 원래 프로젝트의 기존 터미널로 이동하며 닫힌 탭은 다시 만들지 않는다. 동일 탭의 반복 알림은 같은 식별자로 교체한다. 권한 거부·실제 Ghostty 전달·비활성 프로젝트·닫힌 탭 회귀 테스트와 실제 사용자 허용·알림 캡처·B에서 A로 클릭 복귀를 확인했다.
+
+임시 경로의 QA 번들은 시스템 앱 조회가 -10814로 실패했으나, 동일 서명의 별도 Applications QA 번들에서는 권한과 전달이 정상 동작했다. 권한 저장소를 수정하거나 사용자 승인 절차를 우회하지 않았다.
+
+변경 파일: `Sources/Core/TerminalNotificationController.swift`, `Sources/Core/Tabs/TerminalTabState.swift`, `Sources/Core/Tabs/TabCollection.swift`, `Sources/Views/Tabs/TerminalTabView.swift`, `Sources/App/AppDelegate.swift`, `Tests/MarkAgentTests/TerminalNotificationTests.swift`
+
+### 대화 9: 터미널 탭 종료 시 순환 참조 해소
+
+**사용자:**
+> 메모리 리크문제는 항상 체크해야해.
+
+**응답:**
+실제 검색·선택 스니펫·프로젝트 전환 후 두 터미널을 닫자 57건, 325872바이트의 누수가 검출됐다. `TerminalTab → TerminalTabState.onDirectoryChanged → TerminalTab` 순환 참조를 확인해 탭 캡처를 weak로 바꾸고 종료 시 작업 경로·닫기 콜백을 정리했다. weak tab 해제 회귀 테스트가 수정 전 실패하고 수정 후 통과했다. 같은 실제 종료 흐름을 반복한 최종 `leaks --noContent 91413` 결과는 0건/0바이트이며 전체 348개 테스트도 통과했다.
+
+변경 파일: `Sources/Views/Main/MainContainerView.swift`, `Sources/Core/Tabs/TerminalTabState.swift`, `Tests/MarkAgentTests/TerminalTabStateTests.swift`
+
+### 대화 10: 좁은 Raw Edit 화면 복구
+
+**사용자:**
+> 이 화면도 깨져
+
+**응답:**
+제공된 캡처의 문서 툴바와 편집 영역 침범을 네이티브 호스팅에서 폭 443 대 할당 320으로 재현했다. 툴바를 가로 스크롤로 바꿔 중앙 폭을 지키면서 모든 도구에 접근할 수 있게 했다. 스타일 재적용 중 선택 복원 콜백이 모델을 덮어쓰지 않도록 분리했고, 초기 높이가 0이던 거터도 clip view 높이를 따르게 했다.
+
+320pt/900pt 프레임·스크롤·선택 보존 회귀 테스트, 전체 348개 테스트와 서명 번들이 통과했다. 사용자 캡처로 침범 해소와 줄 번호를 확인했고, 실제 툴바 가로 스크롤로 마지막 코드 버튼에 접근했다. 실제 텍스트 입력과 Cmd+S 파일 저장 및 최종 프로세스 누수 0건도 확인했다.
+
+변경 파일: `Sources/Views/Tabs/MarkdownTabView.swift`, `Sources/Views/EditorView.swift`, `Tests/MarkAgentTests/MarkdownTabLayoutTests.swift`
+
+### 대화 11: 날짜 기반 버전과 릴리스 준비
+
+**사용자:**
+> 버전 번호를 앞으로는 연도.월.일 형식으로 바꿔줘. 이번에 릴리즈하는 버전은 26.09.29 인거야
+
+**응답:**
+기존 patch 증가 정책을 `YY.MM.DD` 형식으로 바꿨다. 두 Info.plist 버전 필드에 `26.09.29`를 적용하고, AGENTS·릴리스 명령·README의 기본 버전 규칙도 로컬 릴리스 날짜를 사용하도록 갱신했다. 모든 기능과 추가 수정의 실제 앱 검증, 348개 테스트, 서명 번들, 최종 탭 종료 누수 0건을 확인했다. 세션 소유 QA 프로세스, 앱 등록·번들·폴더·설정과 임시 로그·렌더를 정리했다.
+
+사용자가 요청한 기능 브랜치→dev PR, dev→main PR 병합 후 최종 main에서 서명·공증 ZIP을 만들고 `v26.09.29`로 게시하는 절차를 진행한다. 사용자 소유 앱과 외부 caffeinate 프로세스는 종료하지 않았다.
+
+변경 파일: `Sources/App/Info.plist`, `AGENTS.md`, `.claude/commands/release-build.md`, `README.md`, `history.md`

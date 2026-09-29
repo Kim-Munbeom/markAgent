@@ -101,6 +101,32 @@ final class TerminalTabStateTests: XCTestCase {
         XCTAssertNil(weakState)
     }
 
+    @MainActor
+    func testCloseReleasesCallbackCapturedTerminalTab() {
+        weak var weakTab: TerminalTab?
+        defer { weakTab?.state.onDirectoryChanged = nil }
+
+        autoreleasepool {
+            let state = TerminalTabState(
+                workingDirectory: FileManager.default.temporaryDirectory,
+                userConfigProvider: { nil }
+            )
+            let tab = TerminalTab(
+                id: state.id,
+                workingDirectory: state.workingDirectory,
+                state: state
+            )
+            state.onDirectoryChanged = { [tab] url in
+                tab.groupState.updateWorkingDirectory(url)
+            }
+            weakTab = tab
+
+            state.close()
+        }
+
+        XCTAssertNil(weakTab)
+    }
+
     func testNormalizedWorkingDirectoryAcceptsFileURLFromOSC7() throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("TerminalTabStateTests-\(UUID().uuidString)")

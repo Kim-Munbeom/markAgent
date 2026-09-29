@@ -15,6 +15,10 @@ struct ProjectSidebar: View {
     var activeWorkspaceID: TabWorkspaceID
     var width: Double
     var onHide: () -> Void
+    /// workspace별 상단 탭 바 숨김 여부 조회. 컨텍스트 메뉴 라벨(숨기기/표시)을 결정한다.
+    var isTabBarHidden: (TabWorkspaceID) -> Bool = { _ in false }
+    /// 해당 workspace의 상단 탭 바 표시 상태를 반전한다. 실제 상태는 호출자가 TabCollection에 반영한다.
+    var onToggleTabBar: (TabWorkspaceID) -> Void = { _ in }
 
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.terminalAppTheme) private var terminalAppTheme
@@ -138,6 +142,9 @@ struct ProjectSidebar: View {
         .accessibilityAddTraits(
             ProjectWorkspaceAccessibility.traits(isSelected: activeWorkspaceID == .unscoped)
         )
+        .contextMenu {
+            tabBarToggleButton(for: .unscoped, accessibilitySuffix: "unscoped")
+        }
     }
 
     private func projectRow(_ project: Project) -> some View {
@@ -243,6 +250,7 @@ struct ProjectSidebar: View {
             Button(String(localized: "프로젝트 편집")) {
                 controller.beginEdit(project)
             }
+            tabBarToggleButton(for: .project(project.id), accessibilitySuffix: project.id.uuidString)
             Button(String(localized: "프로젝트 삭제"), role: .destructive) {
                 controller.requestDelete(project)
             }
@@ -252,6 +260,16 @@ struct ProjectSidebar: View {
     private func selectionBackground(for workspaceID: TabWorkspaceID) -> Color {
         guard activeWorkspaceID == workspaceID else { return Color.clear }
         return (appColors?.accent ?? Color.accentColor).opacity(0.14)
+    }
+
+    /// 프로젝트/미분류 행 컨텍스트 메뉴에 들어가는 상단 탭 바 숨기기·표시 항목.
+    /// 라벨은 메뉴가 열리는 시점의 workspace 설정을 따른다.
+    private func tabBarToggleButton(for workspaceID: TabWorkspaceID, accessibilitySuffix: String) -> some View {
+        let isHidden = isTabBarHidden(workspaceID)
+        return Button(isHidden ? String(localized: "Show Tab Bar") : String(localized: "Hide Tab Bar")) {
+            onToggleTabBar(workspaceID)
+        }
+        .accessibilityIdentifier("project-sidebar-tab-bar-toggle-\(accessibilitySuffix)")
     }
 
     private var editorBinding: Binding<ProjectEditorState?> {
