@@ -176,6 +176,7 @@
 | 91 | 실제 caffeinate 상태와 소유 assertion 분리 | 외부 유휴 절전 방지를 감지하고 MarkAgent assertion만 제어하며 실제 IOKit 생성·해제와 외부 상태 보존 검증 |
 | 92 | 사이드바·터미널 검색·알림·탭 바 개선과 날짜 버전 전환 | 실제 앱 검증, 348개 테스트, 탭 종료 누수 0건과 QA 정리를 완료하고 26.09.29 배포 준비 |
 | 93 | 터미널 링크 일반 클릭과 문서 열기 | 명시적 링크의 파일 열기·hover 커서·드래그 선택 보존과 시스템 기본 앱 중복 실행 방지를 구현하고 관련 47개 테스트 및 실제 앱 확인 완료 |
+| 94 | 터미널 링크 지원 v26.10.01 릴리즈 준비 | 전체 352개 테스트 통과 후 날짜 기반 버전을 적용하고 dev/main PR 병합 및 서명·공증 배포 준비 |
 
 ---
 
@@ -3712,3 +3713,13 @@ OSC 8 및 Ghostty가 인식한 링크의 열기 요청을 처리한다. 로컬 �
 일반 클릭 회귀는 수정 전 파일 열기 신호 timeout으로 실패하고 수정 후 통과했다. 실제 Ghostty 통합 테스트에서 일반 클릭과 한글 링크 텍스트 드래그 복사를 함께 확인했으며, 관련 47개 테스트·Swift 진단·debug 번들과 별도 QA 앱의 일반 클릭 파일 열기를 검증했다. 두 실제 프로세스의 `leaks` 점검은 각각 415건/19856바이트와 416건/19936바이트를 보고했으며 루트는 기존 `com.apple.linkd.autoShortcut` AppIntents XPC 순환 참조였다. 직접 실행한 QA PID만 종료하고 저장소 파일 변경 없이 정리했다.
 
 변경 파일: `Sources/Views/Tabs/SearchAwareTerminalView.swift`, `Tests/MarkAgentTests/TerminalLinkTests.swift`, `history.md`
+
+### 대화 4: dev/main PR 병합과 날짜 기반 릴리즈 준비
+
+**사용자:**
+> dev pr 머지, main pr 머지, 릴리즈까지 해줘
+
+**응답:**
+전체 `swift test`가 352개 테스트, 실패 0개로 통과했다. 링크 구현과 세션 히스토리를 기능 커밋 `deca010`으로 분리했고, 로컬 날짜에 따라 두 앱 버전 필드를 `26.10.01`로 갱신했다. 기능 브랜치에서 dev PR을 병합한 뒤 dev에서 main PR을 병합하고, 최종 main 커밋에서 Developer ID 서명·Apple 공증·stapling과 ZIP 검증을 수행해 `v26.10.01` 태그 및 `MarkAgent-v26.10.01.zip` 자산을 게시한다. 기존 미추적 문서·릴리즈 ZIP은 커밋 대상에서 제외했다.
+
+변경 파일: `Sources/App/Info.plist`, `history.md`
