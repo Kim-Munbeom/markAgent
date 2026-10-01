@@ -12,6 +12,7 @@ PATCHED_SOURCE="$(cd "$(dirname "$0")" && pwd)/patches/GhosttyRuntimeResources.s
 TARGET_SOURCE="$CHECKOUT_DIR/Sources/GhosttyTerminal/Configuration/GhosttyRuntimeResources.swift"
 PATCH_DIR="$(dirname "$PATCHED_SOURCE")"
 SEARCH_PATCH="$PATCH_DIR/libghostty-search-callbacks.patch"
+OPEN_URL_PATCH="$PATCH_DIR/libghostty-open-url-handled.patch"
 ACTUAL_REVISION="$(git -C "$CHECKOUT_DIR" rev-parse HEAD)"
 
 if [ "$ACTUAL_REVISION" != "$EXPECTED_REVISION" ]; then
@@ -23,6 +24,10 @@ fi
 if ! git -C "$CHECKOUT_DIR" apply --reverse --check "$SEARCH_PATCH" 2>/dev/null; then
     git -C "$CHECKOUT_DIR" apply --check "$SEARCH_PATCH"
     git -C "$CHECKOUT_DIR" apply "$SEARCH_PATCH"
+fi
+if ! git -C "$CHECKOUT_DIR" apply --reverse --check "$OPEN_URL_PATCH" 2>/dev/null; then
+    git -C "$CHECKOUT_DIR" apply --check "$OPEN_URL_PATCH"
+    git -C "$CHECKOUT_DIR" apply "$OPEN_URL_PATCH"
 fi
 cp -f "$PATCH_DIR/TerminalSurfaceSearchDelegate.swift" \
     "$CHECKOUT_DIR/Sources/GhosttyTerminal/Surface/TerminalSurfaceSearchDelegate.swift"

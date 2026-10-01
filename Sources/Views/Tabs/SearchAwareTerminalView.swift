@@ -8,6 +8,60 @@ final class SearchAwareTerminalView: AppTerminalView {
     var isActiveTerminal: @MainActor () -> Bool = { true }
     private(set) weak var searchState: TerminalSearchState?
     private(set) var searchBar: TerminalSearchBar?
+    private(set) var hoveredLink: String?
+    private var pendingLinkClick: String?
+
+    override func mouseDown(with event: NSEvent) {
+        let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        pendingLinkClick = isActiveTerminal() && modifiers.isEmpty && event.clickCount == 1 ? hoveredLink : nil
+        super.mouseDown(with: event)
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        pendingLinkClick = nil
+        super.mouseDragged(with: event)
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        let url = pendingLinkClick
+        pendingLinkClick = nil
+        super.mouseUp(with: event)
+        guard isActiveTerminal(), event.modifierFlags.intersection(.deviceIndependentFlagsMask).isEmpty,
+              let url else { return }
+        (delegate as? any TerminalSurfaceOpenURLDelegate)?.terminalDidRequestOpenURL(url, kind: .unknown)
+    }
+
+    func updateHoverLink(_ url: String?) {
+        hoveredLink = url
+        guard isActiveTerminal() else { return }
+        (url == nil ? NSCursor.iBeam : NSCursor.pointingHand).set()
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        // 상위 뷰의 드래그 처리도 이 메서드를 호출하므로 선택 중에는 수정키를 바꾸지 않는다.
+        guard event.type == .mouseMoved else {
+            super.mouseMoved(with: event)
+            return
+        }
+        // Ghostty의 링크 탐지는 macOS에서 Command 수정키가 있어야 활성화된다.
+        let linkEvent = NSEvent.mouseEvent(
+            with: event.type, location: event.locationInWindow,
+            modifierFlags: event.modifierFlags.union(.command),
+            timestamp: event.timestamp, windowNumber: event.windowNumber,
+            context: nil, eventNumber: event.eventNumber, clickCount: event.clickCount,
+            pressure: event.pressure
+        )
+        super.mouseMoved(with: linkEvent ?? event)
+        guard isActiveTerminal() else { return }
+        (hoveredLink == nil ? NSCursor.iBeam : NSCursor.pointingHand).set()
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        super.mouseExited(with: event)
+        hoveredLink = nil
+        pendingLinkClick = nil
+        NSCursor.arrow.set()
+    }
 
     func connectSearch(_ state: TerminalSearchState) {
         guard searchState !== state else { return }
@@ -62,6 +116,8 @@ final class SearchAwareTerminalView: AppTerminalView {
     }
 
     func disconnectSearch() {
+        hoveredLink = nil
+        pendingLinkClick = nil
         searchState?.disconnect()
         searchState = nil
         searchBar?.terminalView = nil
