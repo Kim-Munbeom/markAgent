@@ -16,6 +16,7 @@ struct ActiveTabContentView: View {
     var mentionedGitFileIDs: Set<GitChangedFile.ID> = []
     var onSearchShortcut: (SidebarSearchMode) -> Void = { _ in }
     var onSnippetShortcut: (String) -> Void = { _ in }
+    var onOpenTerminalFile: (URL) -> Void = { _ in }
 
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.terminalAppTheme) private var terminalAppTheme
@@ -49,7 +50,8 @@ struct ActiveTabContentView: View {
                     tabs.isActiveTab(id: terminalTab.id)
                 },
                 onSearchShortcut: onSearchShortcut,
-                onSnippetShortcut: onSnippetShortcut
+                onSnippetShortcut: onSnippetShortcut,
+                onOpenFile: onOpenTerminalFile
             )
                 .onChange(of: terminalTab.state.title) { _, _ in
                     onDocumentChanged()

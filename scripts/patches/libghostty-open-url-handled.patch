@@ -1,0 +1,14 @@
+diff --git a/Sources/GhosttyTerminal/Controller/TerminalController+Callbacks.swift b/Sources/GhosttyTerminal/Controller/TerminalController+Callbacks.swift
+--- a/Sources/GhosttyTerminal/Controller/TerminalController+Callbacks.swift
++++ b/Sources/GhosttyTerminal/Controller/TerminalController+Callbacks.swift
+@@ -40,7 +40,9 @@ private enum TerminalCallbacks {
+             bridge.handleAction(action)
+         }
+ 
+-        return false
++        // MarkAgent가 링크 열기를 소유한다. false를 반환하면 Ghostty가
++        // 시스템 기본 앱도 열어 같은 파일이 두 번 열린다.
++        return action.tag == GHOSTTY_ACTION_OPEN_URL
+     }
+ 
+     static func closeSurface(

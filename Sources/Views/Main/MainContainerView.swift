@@ -223,7 +223,8 @@ struct MainContainerView: View {
                         onConfigurationSaved: onConfigurationSaved,
                         mentionedGitFileIDs: openMarkdownMentionedGitFileIDs,
                         onSearchShortcut: showFileBrowserSearch,
-                        onSnippetShortcut: saveSnippetFromTerminalSelection
+                        onSnippetShortcut: saveSnippetFromTerminalSelection,
+                        onOpenTerminalFile: openFileFromSidebar
                     )
                     .frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity)
                 }

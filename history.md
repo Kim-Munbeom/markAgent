@@ -75,6 +75,7 @@
 75. [세션 71: Codex 사용량 스냅샷 선택 수정 및 v1.8.5 릴리즈](#세션-71-codex-사용량-스냅샷-선택-수정-및-v185-릴리즈)
 76. [세션 72: Claude 상태줄 연동과 프로젝트 탐색 개선 및 v1.8.6 릴리즈](#세션-72-claude-상태줄-연동과-프로젝트-탐색-개선-및-v186-릴리즈)
 77. [세션 73: 사이드바·터미널·시스템 상태 사용성 개선](#세션-73-사이드바터미널시스템-상태-사용성-개선)
+78. [세션 74: 터미널 링크 일반 클릭과 문서 열기](#세션-74-터미널-링크-일반-클릭과-문서-열기)
 
 ---
 
@@ -174,6 +175,8 @@
 | 90 | 현재 SDK의 Markdown Document 타입 충돌 해결 | Markdown.Document로 타입을 한정해 기존 컴파일 실패를 해소하고 사용성 개선의 검증 기반 복구 |
 | 91 | 실제 caffeinate 상태와 소유 assertion 분리 | 외부 유휴 절전 방지를 감지하고 MarkAgent assertion만 제어하며 실제 IOKit 생성·해제와 외부 상태 보존 검증 |
 | 92 | 사이드바·터미널 검색·알림·탭 바 개선과 날짜 버전 전환 | 실제 앱 검증, 348개 테스트, 탭 종료 누수 0건과 QA 정리를 완료하고 26.09.29 배포 준비 |
+| 93 | 터미널 링크 일반 클릭과 문서 열기 | 명시적 링크의 파일 열기·hover 커서·드래그 선택 보존과 시스템 기본 앱 중복 실행 방지를 구현하고 관련 47개 테스트 및 실제 앱 확인 완료 |
+| 94 | 터미널 링크 지원 v26.10.01 릴리즈 준비 | 전체 352개 테스트 통과 후 날짜 기반 버전을 적용하고 dev/main PR 병합 및 서명·공증 배포 준비 |
 
 ---
 
@@ -3667,3 +3670,56 @@ Ghostty의 OSC9/777 콜백을 macOS 알림에 연결하고 첫 실제 요청 시
 사용자가 요청한 기능 브랜치→dev PR, dev→main PR 병합 후 최종 main에서 서명·공증 ZIP을 만들고 `v26.09.29`로 게시하는 절차를 진행한다. 사용자 소유 앱과 외부 caffeinate 프로세스는 종료하지 않았다.
 
 변경 파일: `Sources/App/Info.plist`, `AGENTS.md`, `.claude/commands/release-build.md`, `README.md`, `history.md`
+
+---
+
+## 세션 74: 터미널 링크 일반 클릭과 문서 열기
+
+> 날짜: 2026-10-01
+> 경로: ~/workspace/markAgent
+
+Orca에서처럼 터미널의 문서 링크를 클릭해 파일을 열 수 있도록 기존 Ghostty 링크 콜백을 MarkAgent 문서 열기 경로에 연결했다. 상시 밑줄과 일반 파일 경로 자동 인식은 엔진 재빌드가 필요한 범위로 확인되어 사용자 선택에 따라 보류했다.
+
+### 대화 1: 명시적 링크와 앱 내부 파일 열기
+
+**사용자:**
+> 어렵지 않다면 구현해줘. markAgent에서 파일을 열 수 있잖아.
+
+**응답:**
+OSC 8 및 Ghostty가 인식한 링크의 열기 요청을 처리한다. 로컬 파일은 확장자에 관계없이 기존 MarkAgent 문서 탭으로 열고, 상대 경로는 터미널의 현재 작업 폴더를 기준으로 해석한다. 홈 경로, URL 인코딩과 문서 탭 재사용을 검증했으며 웹 링크는 기본 브라우저로 전달한다. hover 시 손 모양 커서를 표시하고 종료 시 콜백을 해제한다. 선택 복사 누수 수정 PR #23의 병합 커밋 `65051461`이 고정 libghostty-spm 1.4.0 revision `356f730`에 포함된 것을 다시 확인했다.
+
+변경 파일: `Sources/Views/Main/ActiveTabContentView.swift`, `Sources/Views/Main/MainContainerView.swift`, `Sources/Views/Tabs/TerminalTabView.swift`, `Sources/Views/Tabs/SearchAwareTerminalView.swift`, `Tests/MarkAgentTests/TerminalLinkTests.swift`
+
+### 대화 2: 표시 범위 선택과 기본 앱 중복 실행 방지
+
+**사용자:**
+> 밑줄이 기본 표시되어야 하는데? 클릭 가능하다는걸 인지시켜야해. 파일 경로가 표시될 경우 링크가 아니어도 클릭이 되면 좋겠어.
+> 엔진 변경: 현재 링크 지원만
+> obsidian이 갑자기 떴는데?
+
+**응답:**
+상시 밑줄과 일반 경로 인식은 현재 Ghostty 설정만으로 구현할 수 없어 코어 패치·XCFramework 재빌드가 필요하다고 설명했고, 사용자는 현재 링크 지원까지만 진행하도록 선택했다. 실제 클릭 QA에서 앱이 파일을 처리한 뒤에도 Ghostty C callback이 false를 반환해 시스템 opener가 Obsidian까지 실행하는 문제를 확인했다. 고정 리비전에만 적용되는 소스 패치로 `OPEN_URL`을 처리된 요청으로 반환해 중복 실행을 막았다.
+
+변경 파일: `scripts/patch-libghostty-resource-bundle.sh`, `scripts/patches/libghostty-open-url-handled.patch`
+
+### 대화 3: 수정키 없는 일반 클릭과 선택 보존
+
+**사용자:**
+> command 클릭이 아니라 그냥 클릭하면 안돼?
+
+**응답:**
+일반 단일 클릭의 down에서 링크 URI를 보관하고 up에서 기존 열기 델리게이트로 전달한다. 드래그·포인터 이탈·뷰 해제 시 후보를 취소해 텍스트 선택을 보존한다. hover 탐지를 위한 Command 수정키 합성도 실제 mouseMoved 이벤트에만 적용해 상위 뷰의 드래그 처리와 분리했다.
+
+일반 클릭 회귀는 수정 전 파일 열기 신호 timeout으로 실패하고 수정 후 통과했다. 실제 Ghostty 통합 테스트에서 일반 클릭과 한글 링크 텍스트 드래그 복사를 함께 확인했으며, 관련 47개 테스트·Swift 진단·debug 번들과 별도 QA 앱의 일반 클릭 파일 열기를 검증했다. 두 실제 프로세스의 `leaks` 점검은 각각 415건/19856바이트와 416건/19936바이트를 보고했으며 루트는 기존 `com.apple.linkd.autoShortcut` AppIntents XPC 순환 참조였다. 직접 실행한 QA PID만 종료하고 저장소 파일 변경 없이 정리했다.
+
+변경 파일: `Sources/Views/Tabs/SearchAwareTerminalView.swift`, `Tests/MarkAgentTests/TerminalLinkTests.swift`, `history.md`
+
+### 대화 4: dev/main PR 병합과 날짜 기반 릴리즈 준비
+
+**사용자:**
+> dev pr 머지, main pr 머지, 릴리즈까지 해줘
+
+**응답:**
+전체 `swift test`가 352개 테스트, 실패 0개로 통과했다. 링크 구현과 세션 히스토리를 기능 커밋 `deca010`으로 분리했고, 로컬 날짜에 따라 두 앱 버전 필드를 `26.10.01`로 갱신했다. 기능 브랜치에서 dev PR을 병합한 뒤 dev에서 main PR을 병합하고, 최종 main 커밋에서 Developer ID 서명·Apple 공증·stapling과 ZIP 검증을 수행해 `v26.10.01` 태그 및 `MarkAgent-v26.10.01.zip` 자산을 게시한다. 기존 미추적 문서·릴리즈 ZIP은 커밋 대상에서 제외했다.
+
+변경 파일: `Sources/App/Info.plist`, `history.md`
