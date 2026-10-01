@@ -7,6 +7,7 @@ struct TerminalTabView: NSViewRepresentable {
     var isStillActive: @MainActor () -> Bool
     var onSearchShortcut: (SidebarSearchMode) -> Void = { _ in }
     var onSnippetShortcut: (String) -> Void = { _ in }
+    var onOpenFile: (URL) -> Void = { _ in }
 
     func makeNSView(context: Context) -> AppTerminalView {
         let view = SearchAwareTerminalView()
@@ -15,6 +16,7 @@ struct TerminalTabView: NSViewRepresentable {
         view.isActiveTerminal = isStillActive
         view.connectSearch(state.search)
         context.coordinator.observeState(state)
+        context.coordinator.onOpenFile = onOpenFile
         state.terminalView = view
         view.delegate = context.coordinator
         view.controller = state.terminalViewState.controller
@@ -48,6 +50,7 @@ struct TerminalTabView: NSViewRepresentable {
         }
         nsView.setSurfaceVisible(isActive)
         context.coordinator.observeState(state)
+        context.coordinator.onOpenFile = onOpenFile
         state.terminalView = nsView
 
         if isActive {
@@ -86,8 +89,10 @@ struct TerminalTabView: NSViewRepresentable {
         view.controller = nil
     }
 
-    class Coordinator: NSObject, TerminalSurfaceTitleDelegate, TerminalSurfaceCloseDelegate, TerminalSurfacePwdDelegate, TerminalSurfaceSearchDelegate, TerminalSurfaceLifecycleDelegate, TerminalSurfaceDesktopNotificationDelegate {
+    class Coordinator: NSObject, TerminalSurfaceTitleDelegate, TerminalSurfaceCloseDelegate, TerminalSurfacePwdDelegate, TerminalSurfaceSearchDelegate, TerminalSurfaceLifecycleDelegate, TerminalSurfaceDesktopNotificationDelegate, TerminalSurfaceOpenURLDelegate, TerminalSurfaceHoverLinkDelegate {
         private weak var state: TerminalTabState?
+        var onOpenFile: ((URL) -> Void)?
+        var openExternalURL: (URL) -> Void = { NSWorkspace.shared.open($0) }
 
         func observeState(_ state: TerminalTabState) {
             self.state = state
@@ -98,6 +103,7 @@ struct TerminalTabView: NSViewRepresentable {
                 state?.terminalView = nil
             }
             state = nil
+            onOpenFile = nil
         }
 
         func terminalDidChangeTitle(_ title: String) {
@@ -114,6 +120,27 @@ struct TerminalTabView: NSViewRepresentable {
 
         func terminalDidRequestDesktopNotification(title: String, body: String) {
             state?.onDesktopNotification?(title, body)
+        }
+
+        func terminalDidRequestOpenURL(_ rawURL: String, kind: TerminalOpenURLKind) {
+            guard let state, !rawURL.isEmpty else { return }
+            let directory = URL(fileURLWithPath: state.workingDirectory.path, isDirectory: true)
+            let url: URL?
+            if rawURL.hasPrefix("~/") {
+                url = URL(fileURLWithPath: NSString(string: rawURL).expandingTildeInPath)
+            } else {
+                url = URL(string: rawURL, relativeTo: directory)?.absoluteURL
+            }
+            guard let url else { return }
+            if url.isFileURL {
+                onOpenFile?(URL(fileURLWithPath: url.path).standardizedFileURL)
+            } else {
+                openExternalURL(url)
+            }
+        }
+
+        func terminalDidUpdateHoverLink(_ url: String?) {
+            (state?.terminalView as? SearchAwareTerminalView)?.updateHoverLink(url)
         }
 
         func terminalDidUpdateSearchTotal(_ total: Int?) {
