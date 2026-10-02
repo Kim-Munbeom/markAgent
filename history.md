@@ -179,6 +179,7 @@
 | 93 | 터미널 링크 일반 클릭과 문서 열기 | 명시적 링크의 파일 열기·hover 커서·드래그 선택 보존과 시스템 기본 앱 중복 실행 방지를 구현하고 관련 47개 테스트 및 실제 앱 확인 완료 |
 | 94 | 터미널 링크 지원 v26.10.01 릴리즈 준비 | 전체 352개 테스트 통과 후 날짜 기반 버전을 적용하고 dev/main PR 병합 및 서명·공증 배포 준비 |
 | 95 | 영역별 포인터 복원과 터미널 커서 요청 처리 | 영역 밖 커서 덮어쓰기와 늦은 링크 콜백을 차단하고 Ghostty OSC 22 요청 전달·보존을 검증한 뒤 사용자 수동 확인 완료 |
+| 96 | 포인터 회귀 수정 v26.10.02 릴리스 준비 | 최종 전체 354개 테스트와 release 빌드 통과 후 두 버전 필드를 갱신하고 dev/main PR 병합·공증 배포 진행 |
 
 ---
 
@@ -3762,3 +3763,15 @@ first responder로 들어오는 터미널 밖 mouseMoved와 이탈 뒤 hover 콜
 사용자가 승인한 기능 브랜치→dev PR, dev→main PR 병합과 릴리스를 진행한다. 로컬 릴리스 날짜의 `YY.MM.DD` 규칙으로 `26.10.02`를 사용하며, 최종 main 기준 Developer ID 서명·Apple 공증·stapling·ZIP 검증 뒤 `v26.10.02`와 `MarkAgent-v26.10.02.zip`을 게시한다. 기존 미추적 파일과 이전 릴리스 ZIP은 커밋 대상에서 제외한다.
 
 변경 파일: `history.md`
+
+### 대화 3: 날짜 버전 적용과 배포 전 검증
+
+**사용자:**
+> 확인했어. dev pr 머지, main pr 머지, 릴리즈까지 진행해줘
+
+**응답:**
+기능 브랜치 `fix/terminal-pointer-cursors-20261002`에서 커서 수정과 히스토리를 `3c4ba07`로 기록했다. 앱의 `CFBundleShortVersionString`과 `CFBundleVersion`에 `26.10.02`를 적용하고, 최종 소스의 전체 354개 테스트·release 구성 빌드·plist와 shell 문법 검사를 통과했다. 릴리스 빌드에서 수정하지 않은 `MarkdownTabState.swift:44`의 weak 캡처 경고와 `MarkdownRenderer.swift:71,171`의 MainActor 격리 경고 3개는 기존 상태로 남겼다.
+
+버전 준비를 별도 커밋으로 기록한 뒤 dev/main PR을 merge commit 방식으로 순서대로 병합한다. 최종 main 소스에서 프로필 `markagent`로 서명·공증 자산을 생성하고 게시한 ZIP의 해시·버전·서명·공증 상태를 다시 확인한다.
+
+변경 파일: `Sources/App/Info.plist`, `history.md`
