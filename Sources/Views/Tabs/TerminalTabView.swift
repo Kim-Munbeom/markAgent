@@ -1,4 +1,5 @@
 import GhosttyTerminal
+import GhosttyKit
 import SwiftUI
 
 struct TerminalTabView: NSViewRepresentable {
@@ -89,7 +90,7 @@ struct TerminalTabView: NSViewRepresentable {
         view.controller = nil
     }
 
-    class Coordinator: NSObject, TerminalSurfaceTitleDelegate, TerminalSurfaceCloseDelegate, TerminalSurfacePwdDelegate, TerminalSurfaceSearchDelegate, TerminalSurfaceLifecycleDelegate, TerminalSurfaceDesktopNotificationDelegate, TerminalSurfaceOpenURLDelegate, TerminalSurfaceHoverLinkDelegate {
+    class Coordinator: NSObject, TerminalSurfaceTitleDelegate, TerminalSurfaceCloseDelegate, TerminalSurfacePwdDelegate, TerminalSurfaceSearchDelegate, TerminalSurfaceLifecycleDelegate, TerminalSurfaceDesktopNotificationDelegate, TerminalSurfaceOpenURLDelegate, TerminalSurfaceHoverLinkDelegate, TerminalSurfaceMouseShapeDelegate {
         private weak var state: TerminalTabState?
         var onOpenFile: ((URL) -> Void)?
         var openExternalURL: (URL) -> Void = { NSWorkspace.shared.open($0) }
@@ -141,6 +142,10 @@ struct TerminalTabView: NSViewRepresentable {
 
         func terminalDidUpdateHoverLink(_ url: String?) {
             (state?.terminalView as? SearchAwareTerminalView)?.updateHoverLink(url)
+        }
+
+        func terminalDidChangeMouseShape(_ shape: ghostty_action_mouse_shape_e) {
+            (state?.terminalView as? SearchAwareTerminalView)?.updateMouseShape(shape)
         }
 
         func terminalDidUpdateSearchTotal(_ total: Int?) {

@@ -1,9 +1,61 @@
 import AppKit
 import GhosttyTerminal
+import GhosttyKit
 import XCTest
 @testable import ma
 
 final class TerminalLinkTests: XCTestCase {
+    @MainActor
+    func testMouseMovementOutsideTerminalPreservesDestinationCursor() throws {
+        _ = NSApplication.shared
+        let view = SearchAwareTerminalView(frame: NSRect(x: 0, y: 0, width: 100, height: 100))
+        let event = try XCTUnwrap(NSEvent.mouseEvent(
+            with: .mouseMoved, location: NSPoint(x: 150, y: 50), modifierFlags: [],
+            timestamp: 0, windowNumber: 0, context: nil, eventNumber: 0, clickCount: 0, pressure: 0
+        ))
+        defer { NSCursor.arrow.set() }
+        NSCursor.resizeLeftRight.set()
+        view.mouseMoved(with: event)
+        XCTAssertEqual(NSCursor.current, NSCursor.resizeLeftRight)
+    }
+
+    @MainActor
+    func testLateHoverCallbackAfterExitPreservesDestinationCursor() throws {
+        _ = NSApplication.shared
+        let view = SearchAwareTerminalView(frame: NSRect(x: 0, y: 0, width: 100, height: 100))
+        let moved = try XCTUnwrap(NSEvent.mouseEvent(
+            with: .mouseMoved, location: NSPoint(x: 50, y: 50), modifierFlags: [],
+            timestamp: 0, windowNumber: 0, context: nil, eventNumber: 0, clickCount: 0, pressure: 0
+        ))
+        let exited = try XCTUnwrap(NSEvent.enterExitEvent(
+            with: .mouseExited, location: NSPoint(x: 150, y: 50), modifierFlags: [],
+            timestamp: 0, windowNumber: 0, context: nil, eventNumber: 0, trackingNumber: 0, userData: nil
+        ))
+        defer { NSCursor.arrow.set() }
+        view.mouseMoved(with: moved)
+        XCTAssertEqual(NSCursor.current, NSCursor.iBeam)
+        view.mouseExited(with: exited)
+        XCTAssertEqual(NSCursor.current, NSCursor.arrow)
+        view.updateHoverLink(nil)
+        XCTAssertEqual(NSCursor.current, NSCursor.arrow)
+        NSCursor.resizeLeftRight.set()
+        view.updateHoverLink("https://example.com")
+        XCTAssertEqual(NSCursor.current, NSCursor.resizeLeftRight)
+        XCTAssertNil(view.hoveredLink)
+        view.updateMouseShape(GHOSTTY_MOUSE_SHAPE_CROSSHAIR)
+        XCTAssertEqual(NSCursor.current, NSCursor.resizeLeftRight)
+        let entered = try XCTUnwrap(NSEvent.enterExitEvent(
+            with: .mouseEntered, location: NSPoint(x: 50, y: 50), modifierFlags: [],
+            timestamp: 0, windowNumber: 0, context: nil, eventNumber: 0, trackingNumber: 0, userData: nil
+        ))
+        view.mouseEntered(with: entered)
+        XCTAssertEqual(NSCursor.current, NSCursor.crosshair)
+        view.updateHoverLink("https://example.com")
+        XCTAssertEqual(NSCursor.current, NSCursor.pointingHand)
+        view.updateHoverLink(nil)
+        XCTAssertEqual(NSCursor.current, NSCursor.crosshair)
+    }
+
     @MainActor
     func testCoordinatorHandlesGhosttyLinkRequests() {
         let delegate: any TerminalSurfaceViewDelegate = TerminalTabView.Coordinator()
@@ -92,6 +144,8 @@ final class TerminalLinkTests: XCTestCase {
         defer {
             coordinator.onTitle = nil
             coordinator.onHover = nil
+            coordinator.onShape = nil
+            NSCursor.arrow.set()
             TerminalTabView.tearDown(view, coordinator: coordinator)
             view.removeFromSuperview()
             window.close()
@@ -152,6 +206,33 @@ final class TerminalLinkTests: XCTestCase {
             view.performBindingAction("copy_to_clipboard")
         }
         XCTAssertEqual(selection?.trimmingCharacters(in: .whitespacesAndNewlines), "문서 이름")
+
+        let blankPoint = view.convert(NSPoint(x: 200, y: 80), to: nil)
+        let blankHover = try XCTUnwrap(NSEvent.mouseEvent(
+            with: .mouseMoved, location: blankPoint, modifierFlags: [],
+            timestamp: 0, windowNumber: window.windowNumber,
+            context: nil, eventNumber: 0, clickCount: 0, pressure: 0
+        ))
+        view.mouseMoved(with: blankHover)
+        for (shape, value, cursor) in [
+            ("pointer", GHOSTTY_MOUSE_SHAPE_POINTER, NSCursor.pointingHand),
+            ("crosshair", GHOSTTY_MOUSE_SHAPE_CROSSHAIR, NSCursor.crosshair),
+            ("default", GHOSTTY_MOUSE_SHAPE_DEFAULT, NSCursor.arrow),
+            ("text", GHOSTTY_MOUSE_SHAPE_TEXT, NSCursor.iBeam),
+        ] {
+            let changed = expectation(description: "OSC 22 \(shape) 커서 요청 처리")
+            coordinator.onShape = {
+                if $0 == value {
+                    coordinator.onShape = nil
+                    changed.fulfill()
+                }
+            }
+            session.receive("\u{1B}]22;\(shape)\u{7}")
+            await fulfillment(of: [changed], timeout: 5)
+            XCTAssertEqual(NSCursor.current, cursor)
+            view.mouseMoved(with: blankHover)
+            XCTAssertEqual(NSCursor.current, cursor)
+        }
     }
 }
 
@@ -159,6 +240,7 @@ final class TerminalLinkTests: XCTestCase {
 private final class LinkSignalCoordinator: TerminalTabView.Coordinator, TerminalSurfaceGridResizeDelegate {
     var onTitle: ((String) -> Void)?
     var onHover: ((String?) -> Void)?
+    var onShape: ((ghostty_action_mouse_shape_e) -> Void)?
     var metrics: TerminalGridMetrics?
 
     override func terminalDidChangeTitle(_ title: String) {
@@ -173,5 +255,10 @@ private final class LinkSignalCoordinator: TerminalTabView.Coordinator, Terminal
     override func terminalDidUpdateHoverLink(_ url: String?) {
         super.terminalDidUpdateHoverLink(url)
         onHover?(url)
+    }
+
+    override func terminalDidChangeMouseShape(_ shape: ghostty_action_mouse_shape_e) {
+        super.terminalDidChangeMouseShape(shape)
+        onShape?(shape)
     }
 }
