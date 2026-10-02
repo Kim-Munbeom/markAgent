@@ -1,5 +1,6 @@
 import AppKit
 import GhosttyTerminal
+import GhosttyKit
 
 final class SearchAwareTerminalView: AppTerminalView {
     var onSearchShortcut: ((SidebarSearchMode) -> Void)?
@@ -10,6 +11,8 @@ final class SearchAwareTerminalView: AppTerminalView {
     private(set) var searchBar: TerminalSearchBar?
     private(set) var hoveredLink: String?
     private var pendingLinkClick: String?
+    private var isPointerInside = false
+    private var requestedCursor = NSCursor.iBeam
 
     override func mouseDown(with event: NSEvent) {
         let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
@@ -32,9 +35,28 @@ final class SearchAwareTerminalView: AppTerminalView {
     }
 
     func updateHoverLink(_ url: String?) {
+        guard isActiveTerminal(), isPointerInside else {
+            hoveredLink = nil
+            return
+        }
         hoveredLink = url
-        guard isActiveTerminal() else { return }
-        (url == nil ? NSCursor.iBeam : NSCursor.pointingHand).set()
+        updatePointerCursor()
+    }
+
+    func updateMouseShape(_ shape: ghostty_action_mouse_shape_e) {
+        requestedCursor = Self.cursor(for: shape)
+        updatePointerCursor()
+    }
+
+    private func updatePointerCursor() {
+        guard isActiveTerminal(), isPointerInside else { return }
+        (hoveredLink == nil ? requestedCursor : NSCursor.pointingHand).set()
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        isPointerInside = true
+        super.mouseEntered(with: event)
+        updatePointerCursor()
     }
 
     override func mouseMoved(with event: NSEvent) {
@@ -43,6 +65,9 @@ final class SearchAwareTerminalView: AppTerminalView {
             super.mouseMoved(with: event)
             return
         }
+        // first responder에는 터미널 밖의 이동도 전달되므로 다른 영역의 커서를 덮어쓰지 않는다.
+        isPointerInside = bounds.contains(convert(event.locationInWindow, from: nil))
+        guard isPointerInside else { return }
         // Ghostty의 링크 탐지는 macOS에서 Command 수정키가 있어야 활성화된다.
         let linkEvent = NSEvent.mouseEvent(
             with: event.type, location: event.locationInWindow,
@@ -52,11 +77,11 @@ final class SearchAwareTerminalView: AppTerminalView {
             pressure: event.pressure
         )
         super.mouseMoved(with: linkEvent ?? event)
-        guard isActiveTerminal() else { return }
-        (hoveredLink == nil ? NSCursor.iBeam : NSCursor.pointingHand).set()
+        updatePointerCursor()
     }
 
     override func mouseExited(with event: NSEvent) {
+        isPointerInside = false
         super.mouseExited(with: event)
         hoveredLink = nil
         pendingLinkClick = nil
@@ -116,6 +141,7 @@ final class SearchAwareTerminalView: AppTerminalView {
     }
 
     func disconnectSearch() {
+        isPointerInside = false
         hoveredLink = nil
         pendingLinkClick = nil
         searchState?.disconnect()

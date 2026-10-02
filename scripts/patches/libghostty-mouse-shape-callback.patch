@@ -1,0 +1,11 @@
+diff --git a/Sources/GhosttyTerminal/InMemory/TerminalCallbackBridge.swift b/Sources/GhosttyTerminal/InMemory/TerminalCallbackBridge.swift
+--- a/Sources/GhosttyTerminal/InMemory/TerminalCallbackBridge.swift
++++ b/Sources/GhosttyTerminal/InMemory/TerminalCallbackBridge.swift
+@@ -121,3 +121,7 @@ final class TerminalCallbackBridge {
++        case GHOSTTY_ACTION_MOUSE_SHAPE:
++            (delegate as? any TerminalSurfaceMouseShapeDelegate)?
++                .terminalDidChangeMouseShape(action.action.mouse_shape)
++
+         case GHOSTTY_ACTION_MOUSE_OVER_LINK:
+             let payload = action.action.mouse_over_link
+             let url: String? = {

@@ -13,6 +13,7 @@ TARGET_SOURCE="$CHECKOUT_DIR/Sources/GhosttyTerminal/Configuration/GhosttyRuntim
 PATCH_DIR="$(dirname "$PATCHED_SOURCE")"
 SEARCH_PATCH="$PATCH_DIR/libghostty-search-callbacks.patch"
 OPEN_URL_PATCH="$PATCH_DIR/libghostty-open-url-handled.patch"
+MOUSE_SHAPE_PATCH="$PATCH_DIR/libghostty-mouse-shape-callback.patch"
 ACTUAL_REVISION="$(git -C "$CHECKOUT_DIR" rev-parse HEAD)"
 
 if [ "$ACTUAL_REVISION" != "$EXPECTED_REVISION" ]; then
@@ -29,6 +30,12 @@ if ! git -C "$CHECKOUT_DIR" apply --reverse --check "$OPEN_URL_PATCH" 2>/dev/nul
     git -C "$CHECKOUT_DIR" apply --check "$OPEN_URL_PATCH"
     git -C "$CHECKOUT_DIR" apply "$OPEN_URL_PATCH"
 fi
+if ! git -C "$CHECKOUT_DIR" apply --reverse --check "$MOUSE_SHAPE_PATCH" 2>/dev/null; then
+    git -C "$CHECKOUT_DIR" apply --check "$MOUSE_SHAPE_PATCH"
+    git -C "$CHECKOUT_DIR" apply "$MOUSE_SHAPE_PATCH"
+fi
+cp -f "$PATCH_DIR/TerminalSurfaceMouseShapeDelegate.swift" \
+    "$CHECKOUT_DIR/Sources/GhosttyTerminal/Surface/TerminalSurfaceMouseShapeDelegate.swift"
 cp -f "$PATCH_DIR/TerminalSurfaceSearchDelegate.swift" \
     "$CHECKOUT_DIR/Sources/GhosttyTerminal/Surface/TerminalSurfaceSearchDelegate.swift"
 cp -f "$PATCHED_SOURCE" "$TARGET_SOURCE"
