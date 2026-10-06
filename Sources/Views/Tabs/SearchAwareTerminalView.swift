@@ -13,25 +13,57 @@ final class SearchAwareTerminalView: AppTerminalView {
     private var pendingLinkClick: String?
     private var isPointerInside = false
     private var requestedCursor = NSCursor.iBeam
+    private var isHandlingPointerEvent = false
+
+    private func withPointerUpdate(_ action: () -> Void) {
+        let previous = isHandlingPointerEvent
+        isHandlingPointerEvent = true
+        defer { isHandlingPointerEvent = previous }
+        action()
+    }
 
     override func mouseDown(with event: NSEvent) {
         let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         pendingLinkClick = isActiveTerminal() && modifiers.isEmpty && event.clickCount == 1 ? hoveredLink : nil
-        super.mouseDown(with: event)
+        withPointerUpdate { super.mouseDown(with: event) }
     }
 
     override func mouseDragged(with event: NSEvent) {
         pendingLinkClick = nil
-        super.mouseDragged(with: event)
+        withPointerUpdate { super.mouseDragged(with: event) }
     }
 
     override func mouseUp(with event: NSEvent) {
         let url = pendingLinkClick
         pendingLinkClick = nil
-        super.mouseUp(with: event)
+        withPointerUpdate { super.mouseUp(with: event) }
         guard isActiveTerminal(), event.modifierFlags.intersection(.deviceIndependentFlagsMask).isEmpty,
               let url else { return }
         (delegate as? any TerminalSurfaceOpenURLDelegate)?.terminalDidRequestOpenURL(url, kind: .unknown)
+    }
+
+    override func rightMouseDown(with event: NSEvent) {
+        withPointerUpdate { super.rightMouseDown(with: event) }
+    }
+
+    override func rightMouseUp(with event: NSEvent) {
+        withPointerUpdate { super.rightMouseUp(with: event) }
+    }
+
+    override func otherMouseDown(with event: NSEvent) {
+        withPointerUpdate { super.otherMouseDown(with: event) }
+    }
+
+    override func otherMouseUp(with event: NSEvent) {
+        withPointerUpdate { super.otherMouseUp(with: event) }
+    }
+
+    override func flagsChanged(with event: NSEvent) {
+        withPointerUpdate { super.flagsChanged(with: event) }
+    }
+
+    override func keyUp(with event: NSEvent) {
+        withPointerUpdate { super.keyUp(with: event) }
     }
 
     func updateHoverLink(_ url: String?) {
@@ -44,6 +76,8 @@ final class SearchAwareTerminalView: AppTerminalView {
     }
 
     func updateMouseShape(_ shape: ghostty_action_mouse_shape_e) {
+        // 입력 중 엔진이 보내는 링크용 커서는 프로그램의 OSC 22 요청이 아니다.
+        guard !isHandlingPointerEvent else { return }
         requestedCursor = Self.cursor(for: shape)
         updatePointerCursor()
     }
@@ -55,11 +89,14 @@ final class SearchAwareTerminalView: AppTerminalView {
 
     override func mouseEntered(with event: NSEvent) {
         isPointerInside = true
-        super.mouseEntered(with: event)
+        withPointerUpdate { super.mouseEntered(with: event) }
         updatePointerCursor()
     }
 
     override func mouseMoved(with event: NSEvent) {
+        let previous = isHandlingPointerEvent
+        isHandlingPointerEvent = true
+        defer { isHandlingPointerEvent = previous }
         // 상위 뷰의 드래그 처리도 이 메서드를 호출하므로 선택 중에는 수정키를 바꾸지 않는다.
         guard event.type == .mouseMoved else {
             super.mouseMoved(with: event)
@@ -94,7 +131,7 @@ final class SearchAwareTerminalView: AppTerminalView {
 
     override func mouseExited(with event: NSEvent) {
         isPointerInside = false
-        super.mouseExited(with: event)
+        withPointerUpdate { super.mouseExited(with: event) }
         hoveredLink = nil
         pendingLinkClick = nil
         NSCursor.arrow.set()
@@ -206,7 +243,7 @@ final class SearchAwareTerminalView: AppTerminalView {
         if handleSearchShortcut(event) {
             return
         }
-        super.keyDown(with: event)
+        withPointerUpdate { super.keyDown(with: event) }
     }
 
     private func handleSearchShortcut(_ event: NSEvent) -> Bool {
