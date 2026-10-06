@@ -64,7 +64,7 @@ struct PromptSnippetsSidebarView: View {
             ScrollView {
                 LazyVStack(spacing: 4) {
                     ForEach(store.snippets) { snippet in
-                        snippetRow(snippet)
+                        snippetRow(snippet, isCopied: copiedSnippetID == snippet.id)
                     }
                 }
                 .padding(.horizontal, 6)
@@ -73,14 +73,16 @@ struct PromptSnippetsSidebarView: View {
         }
     }
 
-    private func snippetRow(_ snippet: PromptSnippet) -> some View {
+    func snippetRow(_ snippet: PromptSnippet, isCopied: Bool) -> some View {
         HStack(alignment: .top, spacing: 8) {
             VStack(alignment: .leading, spacing: 4) {
                 Text(snippet.body)
                     .font(.system(size: 13, weight: .medium))
+                    .lineLimit(3)
+                    .truncationMode(.tail)
                     .fixedSize(horizontal: false, vertical: true)
                     .multilineTextAlignment(.leading)
-                if copiedSnippetID == snippet.id {
+                if isCopied {
                     Text("복사됨")
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(.green)

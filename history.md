@@ -182,6 +182,7 @@
 | 95 | 영역별 포인터 복원과 터미널 커서 요청 처리 | 영역 밖 커서 덮어쓰기와 늦은 링크 콜백을 차단하고 Ghostty OSC 22 요청 전달·보존을 검증한 뒤 사용자 수동 확인 완료 |
 | 96 | 포인터 회귀 수정 v26.10.02 릴리스 준비 | 최종 전체 354개 테스트와 release 빌드 통과 후 두 버전 필드를 갱신하고 dev/main PR 병합·공증 배포 진행 |
 | 97 | herdr OSC 8 링크 호환성 수정 | 마우스 캡처 상태의 링크 조회와 자식 프로세스 링크 capability를 보강하고 실제 herdr 및 사용자 확인 완료 |
+| 98 | 저장된 프롬프트 미리보기 제한 | 목록을 최대 세 줄과 말줄임으로 제한하고 네 가지 실제 렌더 및 전체 359개 테스트 통과 |
 
 ---
 
@@ -3801,3 +3802,15 @@ Ghostty의 마우스 캡처 상태에서는 원래 mouseMoved를 먼저 전달�
 고정 libghostty-spm 1.4.0 revision `356f730bec03281fc7b83666a129b0246137ea26`에 선택 복사 누수 PR #23의 `6505146`이 포함되어 있음을 확인했다. 프로세스 누수 검사에는 AppIntents/linkd NSXPC root만 관찰됐으며 MarkAgent/Ghostty root는 없었다. 데스크톱 자동 입력은 권한 제한으로 수행하지 않았고 실제 클릭 확인은 사용자 수동 QA에 근거한다.
 
 변경 파일: `Sources/Core/Tabs/TerminalTabState.swift`, `Sources/Views/Tabs/SearchAwareTerminalView.swift`, `Tests/MarkAgentTests/TerminalLinkTests.swift`, `Tests/MarkAgentTests/TerminalTabStateTests.swift`, `scripts/patch-libghostty-resource-bundle.sh`, `scripts/patches/AppTerminalView+MouseCapture.swift`, `history.md`
+
+### 대화 2: 저장된 프롬프트 목록 미리보기
+
+**사용자:**
+> 저장된 프롬프트 목록에는 본문 전체가 아니라 2~3줄 미리보기만 표시해줘.
+
+**응답:**
+본문 Text에 최대 세 줄과 끝 말줄임을 적용했다. 저장·복사·편집에 사용하는 전체 본문은 보존한다. 실제 행을 NSHostingView로 렌더링하는 회귀 테스트에서 수정 전 높이 2894pt/974pt가 수정 후 세 줄 기준인 62pt로 줄었다. 240pt/800pt 폭과 밝은/어두운 모드의 네 가지 캡처를 직접 확인했고 편집·삭제 버튼과 말줄임도 정상이다.
+
+관련 7개 테스트와 최종 전체 359개 테스트가 실패 없이 통과했다. 직접 행 렌더에서 발생한 미장착 State 접근 경고는 복사 상태를 행 인자로 전달해 제거했다. 최종 UI 프로세스 누수 검사는 416건/26400바이트를 보고했지만 최상위 root는 기존 AppIntents/linkd NSXPC이며 제품 코드 root는 관찰되지 않았다. 서명된 debug 번들 빌드와 검증 게이트도 통과했다.
+
+변경 파일: `Sources/Views/Sidebar/PromptSnippetsSidebarView.swift`, `Tests/MarkAgentTests/PromptSnippetsSidebarLayoutTests.swift`, `history.md`
