@@ -77,6 +77,7 @@
 77. [세션 73: 사이드바·터미널·시스템 상태 사용성 개선](#세션-73-사이드바터미널시스템-상태-사용성-개선)
 78. [세션 74: 터미널 링크 일반 클릭과 문서 열기](#세션-74-터미널-링크-일반-클릭과-문서-열기)
 79. [세션 75: 영역별 포인터 복원과 터미널 커서 요청 처리](#세션-75-영역별-포인터-복원과-터미널-커서-요청-처리)
+80. [세션 76: herdr 링크 호환성과 프롬프트 미리보기 개선](#세션-76-herdr-링크-호환성과-프롬프트-미리보기-개선)
 
 ---
 
@@ -180,6 +181,9 @@
 | 94 | 터미널 링크 지원 v26.10.01 릴리즈 준비 | 전체 352개 테스트 통과 후 날짜 기반 버전을 적용하고 dev/main PR 병합 및 서명·공증 배포 준비 |
 | 95 | 영역별 포인터 복원과 터미널 커서 요청 처리 | 영역 밖 커서 덮어쓰기와 늦은 링크 콜백을 차단하고 Ghostty OSC 22 요청 전달·보존을 검증한 뒤 사용자 수동 확인 완료 |
 | 96 | 포인터 회귀 수정 v26.10.02 릴리스 준비 | 최종 전체 354개 테스트와 release 빌드 통과 후 두 버전 필드를 갱신하고 dev/main PR 병합·공증 배포 진행 |
+| 97 | herdr OSC 8 링크 호환성 수정 | 마우스 캡처 상태의 링크 조회와 자식 프로세스 링크 capability를 보강하고 실제 herdr 및 사용자 확인 완료 |
+| 98 | 저장된 프롬프트 미리보기 제한 | 목록을 최대 세 줄과 말줄임으로 제한하고 네 가지 실제 렌더 및 전체 359개 테스트 통과 |
+| 99 | v26.10.06 릴리스 준비 | 검증된 두 수정을 독립 커밋으로 기록하고 날짜 버전과 dev/main PR 병합·서명·공증 배포 준비 |
 
 ---
 
@@ -3773,5 +3777,53 @@ first responder로 들어오는 터미널 밖 mouseMoved와 이탈 뒤 hover 콜
 기능 브랜치 `fix/terminal-pointer-cursors-20261002`에서 커서 수정과 히스토리를 `3c4ba07`로 기록했다. 앱의 `CFBundleShortVersionString`과 `CFBundleVersion`에 `26.10.02`를 적용하고, 최종 소스의 전체 354개 테스트·release 구성 빌드·plist와 shell 문법 검사를 통과했다. 릴리스 빌드에서 수정하지 않은 `MarkdownTabState.swift:44`의 weak 캡처 경고와 `MarkdownRenderer.swift:71,171`의 MainActor 격리 경고 3개는 기존 상태로 남겼다.
 
 버전 준비를 별도 커밋으로 기록한 뒤 dev/main PR을 merge commit 방식으로 순서대로 병합한다. 최종 main 소스에서 프로필 `markagent`로 서명·공증 자산을 생성하고 게시한 ZIP의 해시·버전·서명·공증 상태를 다시 확인한다.
+
+변경 파일: `Sources/App/Info.plist`, `history.md`
+
+---
+
+## 세션 76: herdr 링크 호환성과 프롬프트 미리보기 개선
+
+> 날짜: 2026-10-06
+> 경로: ~/workspace/markAgent
+
+herdr를 수정하지 않고 MarkAgent에서 OSC 8 링크를 사용할 수 있도록 호환성을 수정했다. 이어서 저장된 프롬프트 목록의 미리보기를 제한하고 사용자가 요청한 dev/main PR 병합과 날짜 버전 릴리스를 준비한다.
+
+### 대화 1: herdr OSC 8 링크 호환성
+
+**사용자:**
+> herdr를 수정하는게 아니라 markAgent가 herdr에서도 osc8 링크가 동작하게 하는게 목표야
+> 정상이야.
+
+**응답:**
+Ghostty의 마우스 캡처 상태에서는 원래 mouseMoved를 먼저 전달한 다음 좌표 캐시를 무효화하고 Command+Shift로 링크를 조회한다. 일반 셸의 Command 조회와 드래그 선택, 원래 SGR 마우스 보고는 보존했다. 기본 자식 환경에 `PI_HYPERLINKS=1`, `FORCE_HYPERLINK=1`을 전달하며 상속된 값과 사용자 Ghostty 설정의 명시적 비활성화를 존중한다.
+
+실제 Ghostty 마우스 보고·드래그 회귀와 자식 셸 환경 테스트를 포함한 관련 32개 테스트가 통과했다. 설치된 herdr 0.9.3의 격리 서버에서 링크 capability와 두 원래 URI의 활성화 결과를 확인했고 사용자가 실제 클릭 동작을 정상으로 확인했다. herdr의 추적 파일은 수정하지 않은 상태로 복원했고 사용자 서버와 앱은 보존했다.
+
+고정 libghostty-spm 1.4.0 revision `356f730bec03281fc7b83666a129b0246137ea26`에 선택 복사 누수 PR #23의 `6505146`이 포함되어 있음을 확인했다. 프로세스 누수 검사에는 AppIntents/linkd NSXPC root만 관찰됐으며 MarkAgent/Ghostty root는 없었다. 데스크톱 자동 입력은 권한 제한으로 수행하지 않았고 실제 클릭 확인은 사용자 수동 QA에 근거한다.
+
+변경 파일: `Sources/Core/Tabs/TerminalTabState.swift`, `Sources/Views/Tabs/SearchAwareTerminalView.swift`, `Tests/MarkAgentTests/TerminalLinkTests.swift`, `Tests/MarkAgentTests/TerminalTabStateTests.swift`, `scripts/patch-libghostty-resource-bundle.sh`, `scripts/patches/AppTerminalView+MouseCapture.swift`, `history.md`
+
+### 대화 2: 저장된 프롬프트 목록 미리보기
+
+**사용자:**
+> 저장된 프롬프트 목록에는 본문 전체가 아니라 2~3줄 미리보기만 표시해줘.
+
+**응답:**
+본문 Text에 최대 세 줄과 끝 말줄임을 적용했다. 저장·복사·편집에 사용하는 전체 본문은 보존한다. 실제 행을 NSHostingView로 렌더링하는 회귀 테스트에서 수정 전 높이 2894pt/974pt가 수정 후 세 줄 기준인 62pt로 줄었다. 240pt/800pt 폭과 밝은/어두운 모드의 네 가지 캡처를 직접 확인했고 편집·삭제 버튼과 말줄임도 정상이다.
+
+관련 7개 테스트와 최종 전체 359개 테스트가 실패 없이 통과했다. 직접 행 렌더에서 발생한 미장착 State 접근 경고는 복사 상태를 행 인자로 전달해 제거했다. 최종 UI 프로세스 누수 검사는 416건/26400바이트를 보고했지만 최상위 root는 기존 AppIntents/linkd NSXPC이며 제품 코드 root는 관찰되지 않았다. 서명된 debug 번들 빌드와 검증 게이트도 통과했다.
+
+변경 파일: `Sources/Views/Sidebar/PromptSnippetsSidebarView.swift`, `Tests/MarkAgentTests/PromptSnippetsSidebarLayoutTests.swift`, `history.md`
+
+### 대화 3: dev/main PR 병합과 릴리스 요청
+
+**사용자:**
+> 작업이 끝나면 dev pr 머지, main pr 머지, 릴리즈까지 쭉 이어가줘.
+
+**응답:**
+검증된 터미널 수정은 `c333fce`, 프롬프트 미리보기 수정은 `3fe489d`로 각각 기록했다. 로컬 날짜 버전 `26.10.06`을 두 번들 버전 필드에 동일하게 적용한다. 기능 브랜치에서 dev PR을 merge commit으로 병합한 다음 dev에서 main PR을 같은 방식으로 병합한다.
+
+최종 main 소스의 격리 빌드 작업 트리에서 Developer ID 서명과 `markagent` 프로필 공증, stapling 및 Gatekeeper 검증을 수행하고 `v26.10.06`과 `MarkAgent-v26.10.06.zip`을 게시한다. 게시된 자산을 다시 내려받아 해시·버전·서명·공증 상태를 검증한다. 기존 미추적 문서·ZIP과 사용자 앱 인스턴스는 보존한다.
 
 변경 파일: `Sources/App/Info.plist`, `history.md`

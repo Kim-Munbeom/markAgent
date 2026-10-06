@@ -38,4 +38,6 @@ cp -f "$PATCH_DIR/TerminalSurfaceMouseShapeDelegate.swift" \
     "$CHECKOUT_DIR/Sources/GhosttyTerminal/Surface/TerminalSurfaceMouseShapeDelegate.swift"
 cp -f "$PATCH_DIR/TerminalSurfaceSearchDelegate.swift" \
     "$CHECKOUT_DIR/Sources/GhosttyTerminal/Surface/TerminalSurfaceSearchDelegate.swift"
+cp -f "$PATCH_DIR/AppTerminalView+MouseCapture.swift" \
+    "$CHECKOUT_DIR/Sources/GhosttyTerminal/Platform/AppKit/AppTerminalView+MouseCapture.swift"
 cp -f "$PATCHED_SOURCE" "$TARGET_SOURCE"

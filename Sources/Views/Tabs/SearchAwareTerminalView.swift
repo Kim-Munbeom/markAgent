@@ -68,10 +68,18 @@ final class SearchAwareTerminalView: AppTerminalView {
         // first responder에는 터미널 밖의 이동도 전달되므로 다른 영역의 커서를 덮어쓰지 않는다.
         isPointerInside = bounds.contains(convert(event.locationInWindow, from: nil))
         guard isPointerInside else { return }
+        // TUI에는 원래 이동을 전달하고, 캡처를 해제하는 Shift로 링크도 조회한다.
+        // 일반 쉘에서는 Shift가 링크 수정키 조건을 깨므로 캡처 중에만 추가한다.
+        var linkModifiers = event.modifierFlags.union(.command)
+        if isMouseCaptured {
+            super.mouseMoved(with: event)
+            invalidateMousePosition()
+            linkModifiers.insert(.shift)
+        }
         // Ghostty의 링크 탐지는 macOS에서 Command 수정키가 있어야 활성화된다.
         let linkEvent = NSEvent.mouseEvent(
             with: event.type, location: event.locationInWindow,
-            modifierFlags: event.modifierFlags.union(.command),
+            modifierFlags: linkModifiers,
             timestamp: event.timestamp, windowNumber: event.windowNumber,
             context: nil, eventNumber: event.eventNumber, clickCount: event.clickCount,
             pressure: event.pressure
