@@ -101,6 +101,7 @@ final class TerminalLinkTests: XCTestCase {
             coordinator.onTitle = nil
             coordinator.onHover = nil
             coordinator.onResize = nil
+            coordinator.onShape = nil
             NSCursor.arrow.set()
             TerminalTabView.tearDown(view, coordinator: coordinator)
             view.removeFromSuperview()
@@ -115,6 +116,7 @@ final class TerminalLinkTests: XCTestCase {
         let parsed = expectation(description: "TUI 링크와 마우스 모드 파싱")
         coordinator.onTitle = { if $0 == "tui-link-ready" { parsed.fulfill() } }
         session.receive("\u{1B}[?1000h\u{1B}[?1002h\u{1B}[?1003h\u{1B}[?1006h"
+                        + "\u{1B}]22;crosshair\u{7}"
                         + links.map { "\u{1B}]8;;\($0.0)\u{1B}\\\($0.1)\u{1B}]8;;\u{1B}\\" }.joined(separator: "\r\n")
                         + "\u{1B}]2;tui-link-ready\u{7}")
         await fulfillment(of: [parsed], timeout: 5)
@@ -140,6 +142,7 @@ final class TerminalLinkTests: XCTestCase {
             view.mouseMoved(with: hover)
             await fulfillment(of: [hovered], timeout: 5)
             XCTAssertEqual(view.hoveredLink, url)
+            XCTAssertEqual(NSCursor.current, NSCursor.pointingHand)
             let opened = expectation(description: "TUI PR 링크 열기")
             coordinator.openExternalURL = {
                 XCTAssertEqual($0.absoluteString, url)
@@ -216,6 +219,45 @@ final class TerminalLinkTests: XCTestCase {
         await fulfillment(of: [settled], timeout: 5)
         coordinator.onTitle = nil
         XCTAssertNil(view.hoveredLink, "빈 칸으로 이동하면 마지막 호버 링크를 해제해야 한다.")
+        XCTAssertEqual(NSCursor.current, NSCursor.crosshair, "링크 이탈 뒤 TUI가 요청한 커서를 복원해야 한다.")
+        for type in [NSEvent.EventType.rightMouseDown, .rightMouseUp, .otherMouseDown, .otherMouseUp] {
+            let event = try XCTUnwrap(NSEvent.mouseEvent(
+                with: type, location: linkPoint, modifierFlags: [],
+                timestamp: 0, windowNumber: window.windowNumber, context: nil,
+                eventNumber: 0, clickCount: 1, pressure: 1
+            ))
+            switch type {
+            case .rightMouseDown: view.rightMouseDown(with: event)
+            case .rightMouseUp: view.rightMouseUp(with: event)
+            case .otherMouseDown: view.otherMouseDown(with: event)
+            default: view.otherMouseUp(with: event)
+            }
+        }
+        view.mouseMoved(with: try XCTUnwrap(NSEvent.mouseEvent(
+            with: .mouseMoved, location: blankPoint, modifierFlags: [],
+            timestamp: 0, windowNumber: window.windowNumber, context: nil,
+            eventNumber: 0, clickCount: 0, pressure: 0
+        )))
+        XCTAssertEqual(NSCursor.current, NSCursor.crosshair, "다른 버튼 입력도 원래 커서 요청을 바꾸면 안 된다.")
+        view.mouseMoved(with: try XCTUnwrap(NSEvent.mouseEvent(
+            with: .mouseMoved, location: linkPoint, modifierFlags: [],
+            timestamp: 0, windowNumber: window.windowNumber, context: nil,
+            eventNumber: 0, clickCount: 0, pressure: 0
+        )))
+        for modifiers in [NSEvent.ModifierFlags.command, []] {
+            let event = try XCTUnwrap(NSEvent.keyEvent(
+                with: .flagsChanged, location: linkPoint, modifierFlags: modifiers,
+                timestamp: 0, windowNumber: window.windowNumber, context: nil,
+                characters: "", charactersIgnoringModifiers: "", isARepeat: false, keyCode: 55
+            ))
+            view.flagsChanged(with: event)
+        }
+        view.mouseMoved(with: try XCTUnwrap(NSEvent.mouseEvent(
+            with: .mouseMoved, location: blankPoint, modifierFlags: [],
+            timestamp: 0, windowNumber: window.windowNumber, context: nil,
+            eventNumber: 0, clickCount: 0, pressure: 0
+        )))
+        XCTAssertEqual(NSCursor.current, NSCursor.crosshair, "수정키 입력도 원래 커서 요청을 바꾸면 안 된다.")
         for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
             let event = try XCTUnwrap(NSEvent.mouseEvent(
                 with: type, location: blankPoint, modifierFlags: [],
@@ -225,6 +267,27 @@ final class TerminalLinkTests: XCTestCase {
             if type == .leftMouseDown { view.mouseDown(with: event) }
             else { view.mouseUp(with: event) }
         }
+        let requested = expectation(description: "링크 hover 중 새 OSC 22 요청")
+        coordinator.onShape = {
+            if $0 == GHOSTTY_MOUSE_SHAPE_TEXT {
+                coordinator.onShape = nil
+                requested.fulfill()
+            }
+        }
+        view.mouseMoved(with: try XCTUnwrap(NSEvent.mouseEvent(
+            with: .mouseMoved, location: linkPoint, modifierFlags: [],
+            timestamp: 0, windowNumber: window.windowNumber, context: nil,
+            eventNumber: 0, clickCount: 0, pressure: 0
+        )))
+        session.receive("\u{1B}]22;text\u{7}")
+        await fulfillment(of: [requested], timeout: 5)
+        XCTAssertEqual(NSCursor.current, NSCursor.pointingHand)
+        view.mouseMoved(with: try XCTUnwrap(NSEvent.mouseEvent(
+            with: .mouseMoved, location: blankPoint, modifierFlags: [],
+            timestamp: 0, windowNumber: window.windowNumber, context: nil,
+            eventNumber: 0, clickCount: 0, pressure: 0
+        )))
+        XCTAssertEqual(NSCursor.current, NSCursor.iBeam, "링크 hover 중 변경된 원래 요청도 복원해야 한다.")
     }
 
     @MainActor
