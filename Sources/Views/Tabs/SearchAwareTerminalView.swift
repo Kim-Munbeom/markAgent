@@ -65,6 +65,9 @@ final class SearchAwareTerminalView: AppTerminalView {
             super.mouseMoved(with: event)
             return
         }
+        // 엔진이 빈 칸의 nil 콜백을 보내지 않아도 이전 링크가 클릭되지 않게 한다.
+        hoveredLink = nil
+        pendingLinkClick = nil
         // first responder에는 터미널 밖의 이동도 전달되므로 다른 영역의 커서를 덮어쓰지 않는다.
         isPointerInside = bounds.contains(convert(event.locationInWindow, from: nil))
         guard isPointerInside else { return }
@@ -73,9 +76,10 @@ final class SearchAwareTerminalView: AppTerminalView {
         var linkModifiers = event.modifierFlags.union(.command)
         if isMouseCaptured {
             super.mouseMoved(with: event)
-            invalidateMousePosition()
             linkModifiers.insert(.shift)
         }
+        // 같은 링크 안 이동과 같은 좌표 재조회도 새 hover 결과를 받는다.
+        invalidateMousePosition()
         // Ghostty의 링크 탐지는 macOS에서 Command 수정키가 있어야 활성화된다.
         let linkEvent = NSEvent.mouseEvent(
             with: event.type, location: event.locationInWindow,
