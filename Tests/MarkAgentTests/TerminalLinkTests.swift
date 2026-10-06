@@ -72,7 +72,9 @@ final class TerminalLinkTests: XCTestCase {
         let session = InMemoryTerminalSession(write: {
             let report = String(decoding: $0, as: UTF8.self)
             reports.append(report)
-            if report.hasPrefix("\u{1B}[<"), report.hasSuffix("m") {
+            // 첫 클릭 두 번과 드래그의 release만 이 단계에서 기다린다.
+            if report.hasPrefix("\u{1B}[<"), report.hasSuffix("m"),
+               reports.values.filter({ $0.hasPrefix("\u{1B}[<") && $0.hasSuffix("m") }).count <= 3 {
                 released.fulfill()
             }
         }, resize: { _ in })
@@ -180,12 +182,61 @@ final class TerminalLinkTests: XCTestCase {
             "\u{1B}[<35;1;2M", "\u{1B}[<0;1;2M", "\u{1B}[<0;1;2m",
             "\u{1B}[<0;1;2M", "\u{1B}[<32;4;2M", "\u{1B}[<0;4;2m",
         ])
+
+        let linkPoint = view.convert(NSPoint(
+            x: CGFloat(metrics.cellWidthPixels) / window.backingScaleFactor / 2,
+            y: view.bounds.height - CGFloat(metrics.cellHeightPixels) / window.backingScaleFactor / 2
+        ), to: nil)
+        let rehovered = expectation(description: "이동 전 링크 재검출")
+        rehovered.expectedFulfillmentCount = 2
+        coordinator.onHover = {
+            if $0 == links[0].0 {
+                rehovered.fulfill()
+            }
+        }
+        for _ in 0..<2 {
+            view.mouseMoved(with: try XCTUnwrap(NSEvent.mouseEvent(
+                with: .mouseMoved, location: linkPoint, modifierFlags: [],
+                timestamp: 0, windowNumber: window.windowNumber, context: nil,
+                eventNumber: 0, clickCount: 0, pressure: 0
+            )))
+        }
+        await fulfillment(of: [rehovered], timeout: 5)
+        coordinator.onHover = nil
+        coordinator.openExternalURL = { _ in XCTFail("링크 밖 클릭은 마지막 호버 링크를 열면 안 된다.") }
+        let blankPoint = view.convert(NSPoint(x: 400, y: 80), to: nil)
+        let settled = expectation(description: "빈 칸 이동 후 엔진 이벤트 처리")
+        coordinator.onTitle = { if $0 == "blank-hover-ready" { settled.fulfill() } }
+        view.mouseMoved(with: try XCTUnwrap(NSEvent.mouseEvent(
+            with: .mouseMoved, location: blankPoint, modifierFlags: [],
+            timestamp: 0, windowNumber: window.windowNumber, context: nil,
+            eventNumber: 0, clickCount: 0, pressure: 0
+        )))
+        session.receive("\u{1B}]2;blank-hover-ready\u{7}")
+        await fulfillment(of: [settled], timeout: 5)
+        coordinator.onTitle = nil
+        XCTAssertNil(view.hoveredLink, "빈 칸으로 이동하면 마지막 호버 링크를 해제해야 한다.")
+        for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+            let event = try XCTUnwrap(NSEvent.mouseEvent(
+                with: type, location: blankPoint, modifierFlags: [],
+                timestamp: 0, windowNumber: window.windowNumber, context: nil,
+                eventNumber: 0, clickCount: 1, pressure: 1
+            ))
+            if type == .leftMouseDown { view.mouseDown(with: event) }
+            else { view.mouseUp(with: event) }
+        }
     }
 
     @MainActor
     func testMouseMovementOutsideTerminalPreservesDestinationCursor() throws {
         _ = NSApplication.shared
         let view = SearchAwareTerminalView(frame: NSRect(x: 0, y: 0, width: 100, height: 100))
+        let inside = try XCTUnwrap(NSEvent.mouseEvent(
+            with: .mouseMoved, location: NSPoint(x: 50, y: 50), modifierFlags: [],
+            timestamp: 0, windowNumber: 0, context: nil, eventNumber: 0, clickCount: 0, pressure: 0
+        ))
+        view.mouseMoved(with: inside)
+        view.updateHoverLink("https://example.com")
         let event = try XCTUnwrap(NSEvent.mouseEvent(
             with: .mouseMoved, location: NSPoint(x: 150, y: 50), modifierFlags: [],
             timestamp: 0, windowNumber: 0, context: nil, eventNumber: 0, clickCount: 0, pressure: 0
@@ -194,6 +245,7 @@ final class TerminalLinkTests: XCTestCase {
         NSCursor.resizeLeftRight.set()
         view.mouseMoved(with: event)
         XCTAssertEqual(NSCursor.current, NSCursor.resizeLeftRight)
+        XCTAssertNil(view.hoveredLink, "경계 밖 mouseMoved도 이전 링크를 해제해야 한다.")
     }
 
     @MainActor
@@ -348,14 +400,16 @@ final class TerminalLinkTests: XCTestCase {
                                                    timestamp: 0, windowNumber: window.windowNumber,
                                                    context: nil, eventNumber: 0, clickCount: 0, pressure: 0))
         let hovered = expectation(description: "수정키 없이 링크 hover 인식")
+        hovered.expectedFulfillmentCount = 2
         coordinator.onHover = { url in
             if url == "docs/plan.md" {
-                coordinator.onHover = nil
                 hovered.fulfill()
             }
         }
         view.mouseMoved(with: hover)
+        view.mouseMoved(with: hover)
         await fulfillment(of: [hovered], timeout: 5)
+        coordinator.onHover = nil
         XCTAssertEqual(view.hoveredLink, "docs/plan.md")
         for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
             let event = try XCTUnwrap(NSEvent.mouseEvent(with: type, location: point, modifierFlags: [],
