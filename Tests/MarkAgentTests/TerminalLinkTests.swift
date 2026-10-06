@@ -6,6 +6,183 @@ import XCTest
 
 final class TerminalLinkTests: XCTestCase {
     @MainActor
+    func testExecTerminalPropagatesHyperlinkCapabilitiesToChildShell() async throws {
+        let environment = ProcessInfo.processInfo.environment
+        try await assertExecHyperlinkEnvironment(
+            configContents: nil,
+            expectedTitle: "caps:\(environment["PI_HYPERLINKS"] ?? "1"):\(environment["FORCE_HYPERLINK"] ?? "1")"
+        )
+    }
+
+    @MainActor
+    func testExecTerminalPreservesExplicitHyperlinkOptOut() async throws {
+        try await assertExecHyperlinkEnvironment(
+            configContents: "env = PI_HYPERLINKS=0\nenv = FORCE_HYPERLINK=0",
+            expectedTitle: "caps:0:0"
+        )
+    }
+
+    @MainActor
+    private func assertExecHyperlinkEnvironment(configContents: String?, expectedTitle: String) async throws {
+        _ = NSApplication.shared
+        let config = configContents.map {
+            GhosttyConfig(url: URL(fileURLWithPath: "/tmp/link-capabilities-config"),
+                          contents: $0, fontFamilies: [], fontSize: nil, colorTheme: nil, keybinds: [])
+        }
+        let state = TerminalTabState(workingDirectory: FileManager.default.temporaryDirectory,
+                                     userConfigProvider: { config })
+        let coordinator = LinkSignalCoordinator()
+        coordinator.observeState(state)
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 640, height: 160),
+                              styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        let view = SearchAwareTerminalView(frame: NSRect(x: 0, y: 0, width: 640, height: 160))
+        let received = expectation(description: "자식 shell의 링크 지원 환경")
+        coordinator.onTitle = {
+            if $0.hasPrefix("caps:") {
+                XCTAssertEqual($0, expectedTitle)
+                coordinator.onTitle = nil
+                received.fulfill()
+            }
+        }
+        view.configuration = TerminalSurfaceOptions(
+            backend: .exec,
+            command: "printf '\\033]2;caps:%s:%s\\007' \"$PI_HYPERLINKS\" \"$FORCE_HYPERLINK\"; exec /bin/cat"
+        )
+        view.delegate = coordinator
+        state.terminalView = view
+        view.controller = state.terminalViewState.controller
+        window.contentView?.addSubview(view)
+        defer {
+            coordinator.onTitle = nil
+            TerminalTabView.tearDown(view, coordinator: coordinator)
+            view.removeFromSuperview()
+            window.close()
+        }
+        await fulfillment(of: [received], timeout: 5)
+    }
+
+    @MainActor
+    func testActualGhosttyPRLinkWithTUIMouseReporting() async throws {
+        _ = NSApplication.shared
+        let state = TerminalTabState(workingDirectory: FileManager.default.temporaryDirectory, userConfigProvider: { nil })
+        let reports = LinkMouseReports()
+        let released = expectation(description: "TUI 마우스 release 보고")
+        released.expectedFulfillmentCount = 3
+        let session = InMemoryTerminalSession(write: {
+            let report = String(decoding: $0, as: UTF8.self)
+            reports.append(report)
+            if report.hasPrefix("\u{1B}[<"), report.hasSuffix("m") {
+                released.fulfill()
+            }
+        }, resize: { _ in })
+        let coordinator = LinkSignalCoordinator()
+        coordinator.observeState(state)
+        let window = MarkAgentWindow(contentRect: NSRect(x: 0, y: 0, width: 640, height: 160),
+                                     styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        let view = SearchAwareTerminalView(frame: NSRect(x: 0, y: 0, width: 640, height: 160))
+        let viewportReady = expectation(description: "테스트 창 viewport 크기 적용")
+        coordinator.onResize = {
+            if $0.widthPixels == UInt32(view.bounds.width * window.backingScaleFactor),
+               $0.heightPixels == UInt32(view.bounds.height * window.backingScaleFactor) {
+                coordinator.onResize = nil
+                viewportReady.fulfill()
+            }
+        }
+        view.configuration = TerminalSurfaceOptions(backend: .inMemory(session))
+        view.delegate = coordinator
+        state.terminalView = view
+        view.controller = state.terminalViewState.controller
+        window.contentView?.addSubview(view)
+        defer {
+            coordinator.onTitle = nil
+            coordinator.onHover = nil
+            coordinator.onResize = nil
+            NSCursor.arrow.set()
+            TerminalTabView.tearDown(view, coordinator: coordinator)
+            view.removeFromSuperview()
+            window.close()
+        }
+        await fulfillment(of: [viewportReady], timeout: 5)
+
+        let links = [
+            ("https://github.com/comento/comento-admin-laravel/pull/4207", "Laravel #4207"),
+            ("https://github.com/comento/comento-admin-vue/pull/1423", "Vue #1423"),
+        ]
+        let parsed = expectation(description: "TUI 링크와 마우스 모드 파싱")
+        coordinator.onTitle = { if $0 == "tui-link-ready" { parsed.fulfill() } }
+        session.receive("\u{1B}[?1000h\u{1B}[?1002h\u{1B}[?1003h\u{1B}[?1006h"
+                        + links.map { "\u{1B}]8;;\($0.0)\u{1B}\\\($0.1)\u{1B}]8;;\u{1B}\\" }.joined(separator: "\r\n")
+                        + "\u{1B}]2;tui-link-ready\u{7}")
+        await fulfillment(of: [parsed], timeout: 5)
+        coordinator.onTitle = nil
+        XCTAssertTrue(view.isMouseCaptured)
+        let metrics = try XCTUnwrap(coordinator.metrics)
+        for (row, link) in links.enumerated() {
+            let url = link.0
+            let point = view.convert(NSPoint(x: CGFloat(metrics.cellWidthPixels) / window.backingScaleFactor / 2,
+                                            y: view.bounds.height - CGFloat(metrics.cellHeightPixels) / window.backingScaleFactor * (CGFloat(row) + 0.5)), to: nil)
+            let hovered = expectation(description: "TUI 링크 hover")
+            coordinator.onHover = {
+                if $0 == url {
+                    coordinator.onHover = nil
+                    hovered.fulfill()
+                }
+            }
+            let hover = try XCTUnwrap(NSEvent.mouseEvent(
+                with: .mouseMoved, location: point, modifierFlags: [],
+                timestamp: 0, windowNumber: window.windowNumber,
+                context: nil, eventNumber: 0, clickCount: 0, pressure: 0
+            ))
+            view.mouseMoved(with: hover)
+            await fulfillment(of: [hovered], timeout: 5)
+            XCTAssertEqual(view.hoveredLink, url)
+            let opened = expectation(description: "TUI PR 링크 열기")
+            coordinator.openExternalURL = {
+                XCTAssertEqual($0.absoluteString, url)
+                opened.fulfill()
+            }
+            for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+                let event = try XCTUnwrap(NSEvent.mouseEvent(
+                    with: type, location: point, modifierFlags: [],
+                    timestamp: 0, windowNumber: window.windowNumber,
+                    context: nil, eventNumber: 0, clickCount: 1, pressure: 1
+                ))
+                if type == .leftMouseDown { view.mouseDown(with: event) }
+                else { view.mouseUp(with: event) }
+            }
+            await fulfillment(of: [opened], timeout: 5)
+        }
+        coordinator.openExternalURL = { _ in XCTFail("TUI 드래그는 링크를 열면 안 된다.") }
+        let dragY = view.bounds.height - CGFloat(metrics.cellHeightPixels) / window.backingScaleFactor * 1.5
+        for (type, column) in [
+            (NSEvent.EventType.leftMouseDown, 0.5),
+            (.leftMouseDragged, 3.5),
+            (.leftMouseUp, 3.5),
+        ] {
+            let point = view.convert(NSPoint(x: CGFloat(metrics.cellWidthPixels) / window.backingScaleFactor * column,
+                                            y: dragY), to: nil)
+            let event = try XCTUnwrap(NSEvent.mouseEvent(
+                with: type, location: point, modifierFlags: [],
+                timestamp: 0, windowNumber: window.windowNumber,
+                context: nil, eventNumber: 0, clickCount: 1, pressure: 1
+            ))
+            switch type {
+            case .leftMouseDown: view.mouseDown(with: event)
+            case .leftMouseDragged: view.mouseDragged(with: event)
+            default: view.mouseUp(with: event)
+            }
+        }
+        await fulfillment(of: [released], timeout: 5)
+        XCTAssertEqual(reports.values.filter { $0.hasPrefix("\u{1B}[<") }, [
+            "\u{1B}[<35;1;1M", "\u{1B}[<0;1;1M", "\u{1B}[<0;1;1m",
+            "\u{1B}[<35;1;2M", "\u{1B}[<0;1;2M", "\u{1B}[<0;1;2m",
+            "\u{1B}[<0;1;2M", "\u{1B}[<32;4;2M", "\u{1B}[<0;4;2m",
+        ])
+    }
+
+    @MainActor
     func testMouseMovementOutsideTerminalPreservesDestinationCursor() throws {
         _ = NSApplication.shared
         let view = SearchAwareTerminalView(frame: NSRect(x: 0, y: 0, width: 100, height: 100))
@@ -236,11 +413,25 @@ final class TerminalLinkTests: XCTestCase {
     }
 }
 
+private final class LinkMouseReports: @unchecked Sendable {
+    private let lock = NSLock()
+    private var reports: [String] = []
+
+    var values: [String] {
+        lock.withLock { reports }
+    }
+
+    func append(_ report: String) {
+        lock.withLock { reports.append(report) }
+    }
+}
+
 @MainActor
 private final class LinkSignalCoordinator: TerminalTabView.Coordinator, TerminalSurfaceGridResizeDelegate {
     var onTitle: ((String) -> Void)?
     var onHover: ((String?) -> Void)?
     var onShape: ((ghostty_action_mouse_shape_e) -> Void)?
+    var onResize: ((TerminalGridMetrics) -> Void)?
     var metrics: TerminalGridMetrics?
 
     override func terminalDidChangeTitle(_ title: String) {
@@ -250,6 +441,7 @@ private final class LinkSignalCoordinator: TerminalTabView.Coordinator, Terminal
 
     func terminalDidResize(_ size: TerminalGridMetrics) {
         metrics = size
+        onResize?(size)
     }
 
     override func terminalDidUpdateHoverLink(_ url: String?) {

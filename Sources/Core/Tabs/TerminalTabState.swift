@@ -143,11 +143,17 @@ final class TerminalTabState {
     }
 
     static func configSource(for userConfig: GhosttyConfig?) -> TerminalController.ConfigSource {
-        guard let userConfig else { return .none }
+        // herdr처럼 터미널 이름을 바꾸는 중간 계층에서도 CLI가 OSC 8 지원을 알 수 있게 한다.
+        let environment = ProcessInfo.processInfo.environment
+        let defaults = ["PI_HYPERLINKS", "FORCE_HYPERLINK"].map {
+            "env = \($0)=\(environment[$0] ?? "1")"
+        }.joined(separator: "\n")
+        guard let userConfig else { return .generated(defaults) }
         if userConfig.colorTheme != nil {
-            return .generated(contentsWithoutActiveThemeLines(userConfig.contents))
+            return .generated(defaults + "\n" + contentsWithoutActiveThemeLines(userConfig.contents))
         }
-        return .generated(userConfig.contents)
+        // 사용자 env 설정을 뒤에 배치하여 명시적인 옵트아웃을 보존한다.
+        return .generated(defaults + "\n" + userConfig.contents)
     }
 
     private static func contentsWithoutActiveThemeLines(_ contents: String) -> String {

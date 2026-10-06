@@ -5,6 +5,16 @@ import XCTest
 
 final class TerminalTabStateTests: XCTestCase {
     @MainActor
+    func testDefaultTerminalConfigAdvertisesHyperlinkCapabilities() {
+        guard case let .generated(contents) = TerminalTabState.configSource(for: nil) else {
+            return XCTFail("기본 터미널에 링크 지원 환경이 필요하다.")
+        }
+        let environment = ProcessInfo.processInfo.environment
+        XCTAssertTrue(contents.contains("env = PI_HYPERLINKS=\(environment["PI_HYPERLINKS"] ?? "1")"))
+        XCTAssertTrue(contents.contains("env = FORCE_HYPERLINK=\(environment["FORCE_HYPERLINK"] ?? "1")"))
+    }
+
+    @MainActor
     func testSearchAwareTerminalViewConsumesSearchShortcuts() throws {
         let view = SearchAwareTerminalView()
         var requestedModes: [SidebarSearchMode] = []
@@ -35,8 +45,11 @@ final class TerminalTabStateTests: XCTestCase {
             keybinds: []
         )
 
-        XCTAssertEqual(TerminalTabState.configSource(for: firstConfig), .generated("font-size = 14"))
-        XCTAssertEqual(TerminalTabState.configSource(for: editedConfig), .generated("font-size = 18"))
+        let environment = ProcessInfo.processInfo.environment
+        let defaults = "env = PI_HYPERLINKS=\(environment["PI_HYPERLINKS"] ?? "1")\n"
+            + "env = FORCE_HYPERLINK=\(environment["FORCE_HYPERLINK"] ?? "1")"
+        XCTAssertEqual(TerminalTabState.configSource(for: firstConfig), .generated(defaults + "\nfont-size = 14"))
+        XCTAssertEqual(TerminalTabState.configSource(for: editedConfig), .generated(defaults + "\nfont-size = 18"))
         XCTAssertNotEqual(TerminalTabState.configSource(for: firstConfig), TerminalTabState.configSource(for: editedConfig))
     }
 
