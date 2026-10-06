@@ -183,6 +183,7 @@
 | 96 | 포인터 회귀 수정 v26.10.02 릴리스 준비 | 최종 전체 354개 테스트와 release 빌드 통과 후 두 버전 필드를 갱신하고 dev/main PR 병합·공증 배포 진행 |
 | 97 | herdr OSC 8 링크 호환성 수정 | 마우스 캡처 상태의 링크 조회와 자식 프로세스 링크 capability를 보강하고 실제 herdr 및 사용자 확인 완료 |
 | 98 | 저장된 프롬프트 미리보기 제한 | 목록을 최대 세 줄과 말줄임으로 제한하고 네 가지 실제 렌더 및 전체 359개 테스트 통과 |
+| 99 | v26.10.06 릴리스 준비 | 검증된 두 수정을 독립 커밋으로 기록하고 날짜 버전과 dev/main PR 병합·서명·공증 배포 준비 |
 
 ---
 
@@ -3814,3 +3815,15 @@ Ghostty의 마우스 캡처 상태에서는 원래 mouseMoved를 먼저 전달�
 관련 7개 테스트와 최종 전체 359개 테스트가 실패 없이 통과했다. 직접 행 렌더에서 발생한 미장착 State 접근 경고는 복사 상태를 행 인자로 전달해 제거했다. 최종 UI 프로세스 누수 검사는 416건/26400바이트를 보고했지만 최상위 root는 기존 AppIntents/linkd NSXPC이며 제품 코드 root는 관찰되지 않았다. 서명된 debug 번들 빌드와 검증 게이트도 통과했다.
 
 변경 파일: `Sources/Views/Sidebar/PromptSnippetsSidebarView.swift`, `Tests/MarkAgentTests/PromptSnippetsSidebarLayoutTests.swift`, `history.md`
+
+### 대화 3: dev/main PR 병합과 릴리스 요청
+
+**사용자:**
+> 작업이 끝나면 dev pr 머지, main pr 머지, 릴리즈까지 쭉 이어가줘.
+
+**응답:**
+검증된 터미널 수정은 `c333fce`, 프롬프트 미리보기 수정은 `3fe489d`로 각각 기록했다. 로컬 날짜 버전 `26.10.06`을 두 번들 버전 필드에 동일하게 적용한다. 기능 브랜치에서 dev PR을 merge commit으로 병합한 다음 dev에서 main PR을 같은 방식으로 병합한다.
+
+최종 main 소스의 격리 빌드 작업 트리에서 Developer ID 서명과 `markagent` 프로필 공증, stapling 및 Gatekeeper 검증을 수행하고 `v26.10.06`과 `MarkAgent-v26.10.06.zip`을 게시한다. 게시된 자산을 다시 내려받아 해시·버전·서명·공증 상태를 검증한다. 기존 미추적 문서·ZIP과 사용자 앱 인스턴스는 보존한다.
+
+변경 파일: `Sources/App/Info.plist`, `history.md`
