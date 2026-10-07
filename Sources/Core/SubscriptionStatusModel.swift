@@ -21,26 +21,49 @@ enum SubscriptionProvider: String, CaseIterable, Codable, Hashable, Identifiable
 struct SubscriptionUsageWindow: Equatable, Sendable {
     let name: String
     let usedPercent: Double
-    let resetsAt: Date
+    /// OAuth 사용량 구간에는 리셋 시각이 없을 수 있으며, 없으면 nil로 둔다.
+    let resetsAt: Date?
+}
+
+/// 사용량 퍼센트를 "사용한 양" 또는 "남은 양"으로 표시할지 정하는 표시 전용 선택지.
+enum UsagePercentageDisplay: String, CaseIterable, Sendable {
+    case used
+    case remaining
+
+    /// 사용률을 0...100으로 보정하고 반올림한 뒤 표시 기준에 맞게 변환한다(Orca와 동일).
+    /// 비유한 입력은 두 모드 모두 0으로 표시하며, 변환은 표시 시점에만 수행한다.
+    func percent(usedPercent: Double) -> Double {
+        guard usedPercent.isFinite else { return 0 }
+        let roundedUsed = min(max(usedPercent, 0), 100).rounded()
+        switch self {
+        case .used:
+            return roundedUsed
+        case .remaining:
+            return 100 - roundedUsed
+        }
+    }
 }
 
 struct SubscriptionUsage: Equatable, Sendable {
     let primary: SubscriptionUsageWindow
     let secondary: SubscriptionUsageWindow?
+    let fableWeekly: SubscriptionUsageWindow?
     let observedAt: Date?
 
     init(
         primary: SubscriptionUsageWindow,
         secondary: SubscriptionUsageWindow? = nil,
+        fableWeekly: SubscriptionUsageWindow? = nil,
         observedAt: Date? = nil
     ) {
         self.primary = primary
         self.secondary = secondary
+        self.fableWeekly = fableWeekly
         self.observedAt = observedAt
     }
 
     var windows: [SubscriptionUsageWindow] {
-        [primary, secondary].compactMap { $0 }
+        [primary, secondary, fableWeekly].compactMap { $0 }
     }
 }
 
@@ -59,12 +82,20 @@ final class SubscriptionStatusModel {
     typealias PollWake = @Sendable () async -> Void
 
     static let enabledProvidersDefaultsKey = "MarkAgent.subscriptionStatus.registeredProviders"
+    static let usagePercentageDisplayDefaultsKey = "MarkAgent.subscriptionStatus.usagePercentageDisplay"
     static let pollInterval: TimeInterval = 15 * 60
+    static let startupRefreshDelay: TimeInterval = 1
     static let minimumRefetchInterval: TimeInterval = 5 * 60
     static let initialFailureRetryInterval: TimeInterval = 30
     static let maximumFailureRetryInterval: TimeInterval = 15 * 60
 
     private(set) var enabledProviders: [SubscriptionProvider]
+    /// 사용량 표시 기준. 변경 즉시 UserDefaults에 저장된다.
+    var usagePercentageDisplay: UsagePercentageDisplay {
+        didSet {
+            defaults.set(usagePercentageDisplay.rawValue, forKey: Self.usagePercentageDisplayDefaultsKey)
+        }
+    }
     private var states: [SubscriptionProvider: SubscriptionProviderState]
     private let defaults: UserDefaults
     private let loaders: [SubscriptionProvider: Loader]
@@ -77,6 +108,8 @@ final class SubscriptionStatusModel {
     private var retryDates: [SubscriptionProvider: Date]
     private var refreshTasks: [SubscriptionProvider: Task<SubscriptionUsage, Error>]
     private var pollingTask: Task<Void, Never>?
+    /// 앱 시작 후 첫 지연 갱신이 아직 수행되지 않았는지 나타낸다.
+    private var isStartupRefreshPending = true
 
     init(
         defaults: UserDefaults = .standard,
@@ -100,6 +133,8 @@ final class SubscriptionStatusModel {
         self.failureStreaks = [:]
         self.retryDates = [:]
         self.refreshTasks = [:]
+        self.usagePercentageDisplay = defaults.string(forKey: Self.usagePercentageDisplayDefaultsKey)
+            .flatMap(UsagePercentageDisplay.init(rawValue:)) ?? .used
 
         let initialEnabledProviders: [SubscriptionProvider]
         if let storedProviders = defaults.stringArray(forKey: Self.enabledProvidersDefaultsKey) {
@@ -198,19 +233,30 @@ final class SubscriptionStatusModel {
                   enabledProviders.contains(provider) else {
                 return true
             }
-            await recordFailure(for: provider)
+            let retryAfter: TimeInterval?
+            if let clientError = error as? ProviderUsageClientError,
+               case .rateLimited(let interval) = clientError {
+                retryAfter = interval
+            } else {
+                retryAfter = nil
+            }
+            await recordFailure(for: provider, retryAfter: retryAfter)
             let message: String
             if let statuslineError = error as? ClaudeStatuslineUsageError {
                 switch statuslineError {
                 case .noData:
-                    message = String(localized: "Claude 상태줄을 연결한 뒤 Claude에서 응답을 받으면 사용량이 표시됩니다.")
+                    message = String(localized: "Claude 사용량 정보를 아직 받지 못했습니다.")
                 case .staleData:
-                    message = String(localized: "Claude 사용량 정보가 만료되었습니다. Claude에서 다음 응답을 받으면 갱신됩니다.")
+                    message = String(localized: "Claude 사용량 정보가 만료되었습니다. 다음 갱신 때 다시 불러옵니다.")
                 case .malformedData:
-                    message = String(localized: "Claude 상태줄 사용량 정보를 읽을 수 없습니다.")
+                    message = String(localized: "Claude 사용량 정보를 읽을 수 없습니다.")
                 }
             } else if error as? ProviderUsageClientError == .unsupportedResponse {
                 message = "\(provider.displayName) CLI가 구독 사용량을 제공하지 않습니다."
+            } else if provider == .claude,
+                      let clientError = error as? ProviderUsageClientError,
+                      let description = clientError.errorDescription {
+                message = description
             } else {
                 message = "Unable to load \(provider.displayName) usage."
             }
@@ -253,7 +299,13 @@ final class SubscriptionStatusModel {
     func startPolling() {
         guard pollingTask == nil else { return }
         let pollWait = self.pollWait
+        let startupPending = isStartupRefreshPending
         pollingTask = Task { [weak self] in
+            // 시작 직후에는 1초 지연 후 첫 갱신, 재개 시에는 즉시 갱신한다.
+            if startupPending {
+                await pollWait(Self.startupRefreshDelay)
+                guard !Task.isCancelled, self?.completeStartupDelay() == true else { return }
+            }
             await self?.refreshIfNeeded()
             while !Task.isCancelled {
                 guard let delay = self?.nextPollingDelay() else { return }
@@ -276,6 +328,11 @@ final class SubscriptionStatusModel {
         }
     }
 
+    private func completeStartupDelay() -> Bool {
+        isStartupRefreshPending = false
+        return true
+    }
+
     private func nextPollingDelay() -> TimeInterval {
         let currentDate = now()
         let retryDelay = retryDates
@@ -287,14 +344,17 @@ final class SubscriptionStatusModel {
         return min(Self.pollInterval, retryDelay ?? Self.pollInterval)
     }
 
-    private func recordFailure(for provider: SubscriptionProvider) async {
+    private func recordFailure(
+        for provider: SubscriptionProvider,
+        retryAfter: TimeInterval? = nil
+    ) async {
         let currentDate = now()
         let streak = min(failureStreaks[provider, default: 0] + 1, 8)
         let exponentialDelay = Self.initialFailureRetryInterval * pow(2, Double(streak - 1))
         let delay = min(exponentialDelay, Self.maximumFailureRetryInterval)
         lastAttemptDates[provider] = currentDate
         failureStreaks[provider] = streak
-        retryDates[provider] = currentDate.addingTimeInterval(delay)
+        retryDates[provider] = currentDate.addingTimeInterval(max(delay, retryAfter ?? 0))
         if pollingTask != nil {
             await pollWake()
         }

@@ -177,6 +177,27 @@ final class SubscriptionStatusModelTests: XCTestCase {
         XCTAssertFalse(String(describing: persisted).contains(secret))
     }
 
+    func testClaudePublishesSanitizedOAuthClientDiagnostics() async throws {
+        let (defaults, suiteName) = try makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        for error in [
+            ProviderUsageClientError.missingCredentials,
+            .unauthorized(401),
+            .httpStatus(429),
+            .requestFailed,
+        ] {
+            let model = SubscriptionStatusModel(defaults: defaults, loaders: [
+                .claude: { throw error },
+            ])
+            model.setEnabled(true, for: .claude)
+            await model.refresh(.claude)
+
+            let diagnostic = try XCTUnwrap(error.errorDescription)
+            XCTAssertEqual(model.state(for: .claude), .unavailable(message: diagnostic))
+        }
+    }
+
     func testUnsupportedProviderExplainsThatSubscriptionQuotaIsUnavailable() async throws {
         let (defaults, suiteName) = try makeDefaults()
         defer { defaults.removePersistentDomain(forName: suiteName) }
@@ -191,6 +212,32 @@ final class SubscriptionStatusModelTests: XCTestCase {
             model.state(for: .claude),
             .unavailable(message: "Claude CLI가 구독 사용량을 제공하지 않습니다.")
         )
+    }
+
+    func testAutomaticRefreshRespectsClaudeRetryAfter() async throws {
+        let (defaults, suiteName) = try makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let clock = TestNow(Date(timeIntervalSince1970: 1_700_000_000))
+        let calls = CallCounter()
+        let model = SubscriptionStatusModel(
+            defaults: defaults,
+            loaders: [.claude: {
+                await calls.increment()
+                throw ProviderUsageClientError.rateLimited(retryAfter: 3_600)
+            }],
+            now: clock.now
+        )
+        model.setEnabled(true, for: .claude)
+        await model.refreshIfNeeded()
+        clock.advance(by: 3_599)
+        await model.refreshIfNeeded()
+        let suppressedCalls = await calls.currentValue()
+        XCTAssertEqual(suppressedCalls, 1)
+
+        clock.advance(by: 1)
+        await model.refreshIfNeeded()
+        let resumedCalls = await calls.currentValue()
+        XCTAssertEqual(resumedCalls, 2)
     }
 
     func testActivationRefreshUsesOrcaFiveMinuteStalenessThreshold() async throws {
@@ -263,7 +310,7 @@ final class SubscriptionStatusModelTests: XCTestCase {
         XCTAssertEqual(callCount, 3)
     }
 
-    func testPollingStartsImmediatelyAndRefreshesOnInjectedOrcaCadenceTick() async throws {
+    func testPollingDelaysStartupRefreshThenRefreshesOnInjectedOrcaCadenceTick() async throws {
         let (defaults, suiteName) = try makeDefaults()
         defer { defaults.removePersistentDomain(forName: suiteName) }
         let clock = TestNow(Date(timeIntervalSince1970: 1_700_000_000))
@@ -280,6 +327,12 @@ final class SubscriptionStatusModelTests: XCTestCase {
         model.setEnabled(true, for: .codex)
 
         model.startPolling()
+        // 시작 직후에는 1초 지연 대기 중이며 아직 갱신하지 않는다.
+        let startupDelay = await gate.nextRequestedDelay()
+        XCTAssertEqual(startupDelay, SubscriptionStatusModel.startupRefreshDelay)
+        XCTAssertEqual(SubscriptionStatusModel.startupRefreshDelay, 1)
+        XCTAssertEqual(model.state(for: .codex), .unavailable(message: "Not refreshed yet."))
+        await gate.tick()
         await fulfillment(of: [firstRefresh], timeout: 1)
 
         XCTAssertEqual(SubscriptionStatusModel.pollInterval, 15 * 60)
@@ -311,6 +364,9 @@ final class SubscriptionStatusModelTests: XCTestCase {
         model.setEnabled(true, for: .claude)
 
         model.startPolling()
+        let startupDelay = await gate.nextRequestedDelay()
+        XCTAssertEqual(startupDelay, SubscriptionStatusModel.startupRefreshDelay)
+        await gate.tick()
         await fulfillment(of: [firstFailure], timeout: 1)
         let firstDelay = await gate.nextRequestedDelay()
         XCTAssertEqual(firstDelay, 30)
@@ -349,6 +405,9 @@ final class SubscriptionStatusModelTests: XCTestCase {
         clock.advance(by: 1)
 
         model.startPolling()
+        let startupDelay = await gate.nextRequestedDelay()
+        XCTAssertEqual(startupDelay, SubscriptionStatusModel.startupRefreshDelay)
+        await gate.tick()
         let requestedDelay = await gate.nextRequestedDelay()
         XCTAssertEqual(requestedDelay, SubscriptionStatusModel.pollInterval)
 
@@ -364,13 +423,17 @@ final class SubscriptionStatusModelTests: XCTestCase {
         let started = expectation(description: "provider refresh started")
         let cancelled = expectation(description: "provider refresh cancelled")
         let loader = CancellationAwareUsageLoader(started: started, cancelled: cancelled)
+        let gate = PollGate()
         let model = SubscriptionStatusModel(
             defaults: defaults,
-            loaders: [.codex: { try await loader.load() }]
+            loaders: [.codex: { try await loader.load() }],
+            pollWait: { delay in await gate.wait(delay: delay) }
         )
         model.setEnabled(true, for: .codex)
 
         model.startPolling()
+        _ = await gate.nextRequestedDelay()
+        await gate.tick()
         await fulfillment(of: [started], timeout: 1)
         model.stopPolling()
 
@@ -400,7 +463,7 @@ final class SubscriptionStatusModelTests: XCTestCase {
 
         model.startPolling()
         let initialDelay = await gate.nextRequestedDelay()
-        XCTAssertEqual(initialDelay, SubscriptionStatusModel.pollInterval)
+        XCTAssertEqual(initialDelay, SubscriptionStatusModel.startupRefreshDelay)
 
         model.setEnabled(true, for: .claude)
         await model.refresh(.claude)
@@ -411,6 +474,158 @@ final class SubscriptionStatusModelTests: XCTestCase {
         XCTAssertEqual(callCount, 1)
 
         model.stopPolling()
+        await gate.tick()
+    }
+
+    func testUsagePercentageDisplayClampsAndConvertsOnlyAtPresentation() {
+        XCTAssertEqual(UsagePercentageDisplay.allCases, [.used, .remaining])
+        XCTAssertEqual(UsagePercentageDisplay.used.percent(usedPercent: 20.5), 21)
+        XCTAssertEqual(UsagePercentageDisplay.remaining.percent(usedPercent: 20.5), 79)
+        for invalid in [Double.nan, .infinity, -.infinity] {
+            XCTAssertEqual(UsagePercentageDisplay.used.percent(usedPercent: invalid), 0)
+            XCTAssertEqual(UsagePercentageDisplay.remaining.percent(usedPercent: invalid), 0)
+        }
+        XCTAssertEqual(UsagePercentageDisplay.used.percent(usedPercent: -5), 0)
+        XCTAssertEqual(UsagePercentageDisplay.used.percent(usedPercent: 140), 100)
+        XCTAssertEqual(UsagePercentageDisplay.remaining.percent(usedPercent: -5), 100)
+        XCTAssertEqual(UsagePercentageDisplay.remaining.percent(usedPercent: 140), 0)
+    }
+
+    func testUsageWindowWithoutResetDateIsPreserved() {
+        let scoped = SubscriptionUsageWindow(name: "Fable weekly", usedPercent: 12, resetsAt: nil)
+        let usage = SubscriptionUsage(primary: Self.window(percent: 1), fableWeekly: scoped)
+
+        XCTAssertEqual(usage.windows.last, scoped)
+        XCTAssertNil(usage.windows.last?.resetsAt)
+    }
+
+    func testUsageWindowsAreOrderedPrimarySecondaryFableWeekly() {
+        let primary = Self.window(name: "Five hour", percent: 10)
+        let secondary = Self.window(name: "Seven day", percent: 20)
+        let fable = Self.window(name: "Fable weekly", percent: 30)
+
+        XCTAssertNil(SubscriptionUsage(primary: primary).fableWeekly)
+        XCTAssertEqual(
+            SubscriptionUsage(primary: primary, secondary: secondary, fableWeekly: fable).windows,
+            [primary, secondary, fable]
+        )
+        XCTAssertEqual(SubscriptionUsage(primary: primary, fableWeekly: fable).windows, [primary, fable])
+    }
+
+    func testUsagePercentageDisplayDefaultsToUsedAndPersistsChoice() throws {
+        let (defaults, suiteName) = try makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let key = SubscriptionStatusModel.usagePercentageDisplayDefaultsKey
+        let model = SubscriptionStatusModel(defaults: defaults, loaders: [:])
+
+        XCTAssertEqual(model.usagePercentageDisplay, .used)
+        XCTAssertNil(defaults.object(forKey: key))
+
+        model.usagePercentageDisplay = .remaining
+
+        XCTAssertEqual(defaults.string(forKey: key), "remaining")
+        XCTAssertEqual(
+            SubscriptionStatusModel(defaults: defaults, loaders: [:]).usagePercentageDisplay,
+            .remaining
+        )
+
+        defaults.set("invalid", forKey: key)
+        XCTAssertEqual(
+            SubscriptionStatusModel(defaults: defaults, loaders: [:]).usagePercentageDisplay,
+            .used
+        )
+    }
+
+    func testResumedPollingRefreshesImmediatelyWithoutStartupDelay() async throws {
+        let (defaults, suiteName) = try makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let clock = TestNow(Date(timeIntervalSince1970: 1_700_000_000))
+        let gate = PollGate()
+        let firstRefresh = expectation(description: "startup refresh")
+        let resumedRefresh = expectation(description: "resumed refresh")
+        let loader = PollingUsageLoader(expectations: [firstRefresh, resumedRefresh])
+        let model = SubscriptionStatusModel(
+            defaults: defaults,
+            loaders: [.codex: { await loader.load() }],
+            now: clock.now,
+            pollWait: { delay in await gate.wait(delay: delay) }
+        )
+        model.setEnabled(true, for: .codex)
+
+        model.startPolling()
+        let startupDelay = await gate.nextRequestedDelay()
+        XCTAssertEqual(startupDelay, SubscriptionStatusModel.startupRefreshDelay)
+        await gate.tick()
+        await fulfillment(of: [firstRefresh], timeout: 1)
+        let cadenceDelay = await gate.nextRequestedDelay()
+        XCTAssertEqual(cadenceDelay, SubscriptionStatusModel.pollInterval)
+
+        // 비활성화되면 자동 요청을 멈추고, 다시 활성화되면 5분 경과 시 즉시 갱신한다.
+        model.stopPolling()
+        await gate.tick()
+        clock.advance(by: SubscriptionStatusModel.minimumRefetchInterval)
+        model.startPolling()
+        await fulfillment(of: [resumedRefresh], timeout: 1)
+        let resumedDelay = await gate.nextRequestedDelay()
+        XCTAssertEqual(resumedDelay, SubscriptionStatusModel.pollInterval)
+
+        model.stopPolling()
+        await gate.tick()
+    }
+
+    func testStoppingDuringStartupDelayPreventsRefreshUntilResumed() async throws {
+        let (defaults, suiteName) = try makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let gate = PollGate()
+        let calls = CallCounter()
+        let refreshed = expectation(description: "refresh after resume")
+        let model = SubscriptionStatusModel(
+            defaults: defaults,
+            loaders: [.codex: {
+                await calls.increment()
+                refreshed.fulfill()
+                return SubscriptionUsage(primary: Self.window(percent: 5))
+            }],
+            pollWait: { delay in await gate.wait(delay: delay) }
+        )
+        model.setEnabled(true, for: .codex)
+
+        model.startPolling()
+        _ = await gate.nextRequestedDelay()
+        model.stopPolling()
+        await gate.tick()
+
+        // 취소된 지연 대기는 갱신하지 않고, 재개 시 시작 지연이 다시 적용된다.
+        model.startPolling()
+        let secondStartupDelay = await gate.nextRequestedDelay()
+        XCTAssertEqual(secondStartupDelay, SubscriptionStatusModel.startupRefreshDelay)
+        await gate.tick()
+        await fulfillment(of: [refreshed], timeout: 1)
+        let callCount = await calls.currentValue()
+        XCTAssertEqual(callCount, 1)
+
+        model.stopPolling()
+        await gate.tick()
+    }
+
+    func testPollingTaskDoesNotRetainModelWhileWaiting() async throws {
+        let (defaults, suiteName) = try makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let gate = PollGate()
+        weak var weakModel: SubscriptionStatusModel?
+
+        do {
+            let model = SubscriptionStatusModel(
+                defaults: defaults,
+                loaders: [:],
+                pollWait: { delay in await gate.wait(delay: delay) }
+            )
+            weakModel = model
+            model.startPolling()
+            _ = await gate.nextRequestedDelay()
+        }
+
+        XCTAssertNil(weakModel)
         await gate.tick()
     }
 

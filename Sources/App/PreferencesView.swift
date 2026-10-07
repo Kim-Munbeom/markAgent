@@ -3,7 +3,7 @@ import GhosttyTheme
 import SwiftUI
 
 struct PreferencesView: View {
-    var subscriptionStatus: SubscriptionStatusModel
+    @Bindable var subscriptionStatus: SubscriptionStatusModel
     @State private var preferences: GhosttyPreferences
     @State private var selectedThemeFilter: ThemeFilter
     @State private var saveErrorMessage: String?
@@ -105,6 +105,13 @@ struct PreferencesView: View {
             }
 
             Section("AI Subscriptions") {
+                Picker("Usage percentage", selection: $subscriptionStatus.usagePercentageDisplay) {
+                    ForEach(UsagePercentageDisplay.allCases, id: \.self) { display in
+                        Text(display.settingsTitle).tag(display)
+                    }
+                }
+                .accessibilityIdentifier("settings-usage-percentage-display")
+
                 AISubscriptionsSettingsRows(subscriptionStatus: subscriptionStatus)
             }
 
@@ -361,8 +368,6 @@ struct PreferencesView: View {
 struct AISubscriptionsSettingsRows: View {
     var subscriptionStatus: SubscriptionStatusModel
     @State private var cliVersions: [SubscriptionProvider: String] = [:]
-    @State private var isClaudeStatuslineConnected = false
-    @State private var claudeStatuslineError: String?
 
     init(
         subscriptionStatus: SubscriptionStatusModel,
@@ -377,7 +382,6 @@ struct AISubscriptionsSettingsRows: View {
             providerRegistrationRow(provider)
         }
         .task {
-            isClaudeStatuslineConnected = ClaudeStatuslineIntegration.isInstalled()
             await loadCLIVersions()
         }
     }
@@ -425,24 +429,10 @@ struct AISubscriptionsSettingsRows: View {
             .foregroundStyle(.secondary)
 
             if provider == .claude {
-                Text("Claude 응답 후 5시간·7일 사용량을 받습니다. 기존 상태줄은 유지됩니다.")
+                Text("기존 Claude 로그인을 그대로 사용해 5시간·7일 사용량을 조회합니다. 별도 연결 설정은 필요 없습니다.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
-
-                if subscriptionStatus.enabledProviders.contains(.claude), !isClaudeStatuslineConnected {
-                    Button("Claude 상태줄 연결") {
-                        setProviderEnabled(true, provider: .claude)
-                    }
-                    .accessibilityIdentifier("settings-claude-statusline-connect")
-                }
-
-                if let claudeStatuslineError {
-                    Text(claudeStatuslineError)
-                        .font(.caption)
-                        .foregroundStyle(.red)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
             }
 
             HStack {
@@ -463,21 +453,8 @@ struct AISubscriptionsSettingsRows: View {
         .padding(.vertical, 4)
     }
 
+    /// 공급자 등록 상태만 바꾼다. Claude도 기존 로그인을 그대로 쓰므로 별도 연동 설치/해제는 하지 않는다.
     private func setProviderEnabled(_ isEnabled: Bool, provider: SubscriptionProvider) {
-        if provider == .claude {
-            do {
-                if isEnabled, let executableURL = Bundle.main.executableURL {
-                    try ClaudeStatuslineIntegration.install(executableURL: executableURL)
-                } else if !isEnabled {
-                    try ClaudeStatuslineIntegration.uninstall()
-                }
-                isClaudeStatuslineConnected = ClaudeStatuslineIntegration.isInstalled()
-                claudeStatuslineError = nil
-            } catch {
-                claudeStatuslineError = error.localizedDescription
-                return
-            }
-        }
         subscriptionStatus.setEnabled(isEnabled, for: provider)
         if isEnabled {
             Task { await subscriptionStatus.refresh(provider) }
@@ -491,10 +468,15 @@ struct AISubscriptionsSettingsRows: View {
         case .loading:
             return String(localized: "사용량 확인 중…")
         case .available(let usage):
+            let percentText = subscriptionStatus.usagePercentageDisplay
+                .qualifiedPercentText(usedPercent: usage.primary.usedPercent)
+            guard let resetsAt = usage.primary.resetsAt else {
+                return String(format: String(localized: "연결됨 · %@"), percentText)
+            }
             return String(
-                format: String(localized: "연결됨 · %.0f%% 사용 · reset %@"),
-                usage.primary.usedPercent,
-                usage.primary.resetsAt.formatted(.relative(presentation: .named))
+                format: String(localized: "연결됨 · %@ · reset %@"),
+                percentText,
+                resetsAt.formatted(.relative(presentation: .named))
             )
         case .unavailable(let message):
             return String(localized: "연결 확인 필요 · \(message)")
