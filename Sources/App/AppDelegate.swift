@@ -23,7 +23,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let leftSidebarVisibleDefaultsKey: String
     private var rootHostingView: NSHostingView<AnyView>?
     private var searchKeyMonitor: Any?
-    private var claudeUsageObserver: NSObjectProtocol?
     private var notificationCenter: UNUserNotificationCenter?
     private var terminalNotificationController: TerminalNotificationController?
 
@@ -56,7 +55,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.leftSidebarVisibleDefaultsKey = "isLeftSidebarVisible"
         self.rootHostingView = nil
         self.searchKeyMonitor = nil
-        self.claudeUsageObserver = nil
         super.init()
         tabs.dirtyPrompter = dirtyPrompter
     }
@@ -91,15 +89,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         openLaunchTargetIfNeeded()
         updateWindowTitle()
         setupSearchKeyMonitor()
-        claudeUsageObserver = DistributedNotificationCenter.default().addObserver(
-            forName: ClaudeStatuslineUsageStore.notificationName,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                await self?.subscriptionStatus.refresh(.claude)
-            }
-        }
         NSRunningApplication.current.activate()
     }
 
@@ -125,10 +114,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         systemStatus.stopSampling()
         if let searchKeyMonitor {
             NSEvent.removeMonitor(searchKeyMonitor)
-        }
-        if let claudeUsageObserver {
-            DistributedNotificationCenter.default().removeObserver(claudeUsageObserver)
-            self.claudeUsageObserver = nil
         }
     }
 
