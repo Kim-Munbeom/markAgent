@@ -648,6 +648,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let panel = NSOpenPanel()
         panel.title = String(localized: "파일 열기")
         panel.prompt = String(localized: "열기")
+        panel.directoryURL = tabs.activeWorkingDirectory ?? directoryScanner.currentDirectory
         panel.canChooseFiles = true
         panel.canChooseDirectories = false
         panel.allowsMultipleSelection = false

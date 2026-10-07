@@ -418,6 +418,24 @@ final class TerminalLinkTests: XCTestCase {
     }
 
     @MainActor
+    func testRelativeFileOpeningUsesHerdrEffectiveDirectory() {
+        let outer = FileManager.default.temporaryDirectory.appendingPathComponent("outer", isDirectory: true)
+        let pane = FileManager.default.temporaryDirectory.appendingPathComponent("herdr-pane", isDirectory: true)
+        let state = TerminalTabState(workingDirectory: outer, userConfigProvider: { nil })
+        let coordinator = TerminalTabView.Coordinator()
+        coordinator.observeState(state)
+        var opened: URL?
+        coordinator.onOpenFile = { opened = $0 }
+        state.applyHerdrDirectoryUpdate(.override(pane))
+        state.receiveShellWorkingDirectory(outer.path)
+
+        coordinator.terminalDidRequestOpenURL("note.md", kind: .text)
+
+        XCTAssertEqual(opened, pane.appendingPathComponent("note.md").standardizedFileURL)
+        state.close()
+    }
+
+    @MainActor
     func testActualGhosttyOSC8PlainClickOpensMarkdownAndDragSelectsText() async throws {
         _ = NSApplication.shared
         let state = TerminalTabState(workingDirectory: FileManager.default.temporaryDirectory, userConfigProvider: { nil })

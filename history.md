@@ -80,6 +80,7 @@
 80. [세션 76: herdr 링크 호환성과 프롬프트 미리보기 개선](#세션-76-herdr-링크-호환성과-프롬프트-미리보기-개선)
 81. [세션 77: Claude OAuth 사용량과 상태바 표시 개선](#세션-77-claude-oauth-사용량과-상태바-표시-개선)
 82. [세션 78: 기존 Swift 경고 수정과 Fable 표시 순서 보정](#세션-78-기존-swift-경고-수정과-fable-표시-순서-보정)
+83. [세션 79: herdr 작업 경로와 파일 열기 연동](#세션-79-herdr-작업-경로와-파일-열기-연동)
 
 ---
 
@@ -197,6 +198,7 @@
 | 108 | 기존 weak capture 및 MainActor 경고 수정 | 문서 weak 캡처와 구체적 뷰 생성의 actor 경계를 적용하고 release 경고 0개·전체 386개 테스트 통과 |
 | 109 | 하단 Fable 이름과 비율 순서 보정 | Fable을 비율 앞으로 이동하고 used/remaining·밝은/어두운 모드·좁은 폭의 기존 실제 렌더 검증 통과 |
 | 110 | 경고 수정 및 Fable 순서 v26.10.07.1 재릴리스 준비 | 사용자 선택에 따라 기존 v26.10.07을 보존하고 두 버전 필드에 .1 예외를 적용해 dev/main 병합·공증 배포 준비 |
+| 111 | herdr 작업 경로와 파일 열기 연동 | 터미널별 PID·TTY 등록과 실제 세션 소켓으로 활성 pane pwd 추적, A/B·cd·종료 복원·파일 열기 및 누수 전후 동일 확인 |
 
 ---
 
@@ -4000,3 +4002,43 @@ Orca 원본의 Claude 사용량 조회와 갱신 방식을 확인해 기존 상�
 기능 브랜치 `fix/swift-warnings-fable-order-20261007`에서 dev PR을 merge commit으로 병합한 뒤 dev에서 main PR을 같은 방식으로 병합한다. 최종 변경에 대한 직접 QA 근거를 재사용하고 별도 고정 review 작업 트리에서 단일 native gate reviewer를 실행한다. 병합된 main의 격리 release 작업 트리에서 Developer ID 서명·`markagent` 프로필 공증·stapling·압축 해제 Gatekeeper 검증을 수행하고 `v26.10.07.1` 및 `MarkAgent-v26.10.07.1.zip`을 게시한다. 게시 ZIP을 다시 내려받아 원본 일치·SHA-256·두 버전·서명·공증을 검증한다. 사용자 설치 앱과 실행 PID, 기존 미추적 문서·ZIP은 보존한다.
 
 변경 파일: `Sources/App/Info.plist`, `history.md`
+
+---
+
+## 세션 79: herdr 작업 경로와 파일 열기 연동
+
+> 날짜: 2026-10-07
+> 경로: ~/workspace/markAgent
+
+herdr space 전환 시 활성 pane의 작업 경로를 오른쪽 사이드바와 파일 열기에 반영한다. 사용자는 구현과 dev/main PR 병합, 릴리즈까지 요청했다.
+
+### 대화 1: 경로 전달 계약 조사와 파일 열기 기본 경로 적용
+
+**사용자:**
+> herdr로 작업할 때 herdr의 space를 전환할 경우 해당 space의 pwd를 전달받아서 right sidebar에 인식하게 할 수 있어?
+> 구현해서 dev pr 머지, main pr 머지, 릴리즈까지 쭉 진행해줘
+> right sidebar 이외에 파일을 열때에도 해당 pwd가 적용되게 해야해
+> 릴리즈 버전: 26.10.07.2 (Recommended)
+
+**응답:**
+herdr의 pane별 cwd/foreground_cwd 데이터와 MarkAgent의 터미널 cwd 콜백, 파일 브라우저 및 상대 링크 해석 경로를 읽어 확인했다. herdr upstream은 읽기 권한만 있으므로 기존 API를 활용하는 MarkAgent 단독 구현 경계를 조사한다. 파일 열기 대화상자의 기본 경로를 활성 탭의 작업 디렉터리로 설정했고 해당 파일의 LSP 오류는 없었다. 사용자가 같은 날 재릴리스 버전으로 `26.10.07.2`를 명시 선택했으므로 두 번들 버전 필드에 동일하게 적용하고 기존 릴리즈를 보존한다. 구현 및 실제 연동 검증 결과는 이어서 기록한다.
+
+변경 파일: `Sources/App/AppDelegate.swift`, `Sources/App/Info.plist`, `history.md`
+
+---
+
+### 대화 2: native 추적 구현과 실제 앱 회귀 검증
+
+**사용자:**
+> 이 기능지원이 herdr에만 국한된거야? 아니면 다른 유사 프로그램에도 적용될 수 있는거야?
+
+**응답:**
+space/pane 추적은 herdr 세션 API에 특화하고, cwd 소비 경로는 기존 범용 터미널 모델을 사용한다. OSC 7로 cwd를 전달하는 프로그램의 기존 동작을 유지한다.
+
+실제 QA에서 선언된 Ghostty foreground PID·TTY 함수가 현재 바이너리에서는 0·빈 문자열을 반환하는 미구현 함수임을 확인했다. macOS의 셸 exec 인자 조회에서도 환경은 노출되지 않으므로, 셸 시작 시 PID·TTY를 한 번 원자적으로 등록한 뒤 원래 셸 명령으로 exec하는 방식으로 구현했다. 등록 PID를 앱 자신의 자식 목록과 대조해 setuid login 부모의 역방향 조회 제한을 피하고, controlling TTY·foreground 그룹·프로세스 시작 시간·실제 herdr-client.sock peer를 검증한다. 활성 surface에서 500ms 간격으로 중복 없이 조회하며 늦은 응답·종료·비활성 탭의 업데이트를 차단한다. 원래 셸 명령과 shell integration 설정을 보존하고 닫힌 탭의 등록 파일을 정리한다.
+
+`proc_listpgrppids` 반환값은 바이트가 아닌 PID 개수임을 실제 프로세스로 확인해 수정했다. 실제 PTY를 여는 결정적 테스트로 등록·소유권·foreground 연결을 검증했다. 소유 QA 앱 PID `32408`에서 전용 herdr 세션의 A/B space 전환, pane 내부 `cd subdir`, herdr 클라이언트 종료 후 외부 셸 pwd 복원과 space B의 파일 열기 기본 디렉터리를 직접 확인했다. 상대 파일 열기는 effective pwd 기준으로 해석하는 직접 회귀 테스트가 통과했다. 전체 411개 테스트와 신규 상대 파일 열기 테스트 1개가 exit 0으로 통과했고 변경 파일 진단 오류는 없었다.
+
+누수 점검은 같은 소유 PID에서 전후 모두 416건·19,936바이트였으며, 전부 기존 `LNDaemonApplicationInterface`의 LaunchServices NSXPCConnection root 3개였다. herdr follower·소켓·등록 객체의 새 root는 없었다. libghostty-spm PR #23은 병합됐으며 사용 중인 `1.4.0`(`356f730`)의 복사 구현에 수정이 포함됨을 확인했다. 기존 로컬 패치는 제거하지 않았다. 사용자 앱과 herdr 세션, 기존 미추적 파일은 보존했다.
+
+변경 파일: `Sources/App/AppDelegate.swift`, `Sources/Core/Terminal/TerminalProcessRegistration.swift`, `Sources/Core/Terminal/HerdrProcessInspector.swift`, `Sources/Core/Terminal/HerdrDirectoryFollower.swift`, `Sources/Core/Tabs/GhosttyConfig.swift`, `Sources/Core/Tabs/TerminalTabState.swift`, `Sources/Views/Tabs/TerminalTabView.swift`, `Tests/MarkAgentTests/HerdrProcessInspectorTests.swift`, `Tests/MarkAgentTests/HerdrDirectoryFollowerTests.swift`, `Tests/MarkAgentTests/TerminalTabStateTests.swift`, `Tests/MarkAgentTests/TerminalLinkTests.swift`, `history.md`
