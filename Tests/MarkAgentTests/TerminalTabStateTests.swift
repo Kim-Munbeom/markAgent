@@ -5,6 +5,89 @@ import XCTest
 
 final class TerminalTabStateTests: XCTestCase {
     @MainActor
+    func testTerminalRegistrationIsScopedAndPreservesCustomCommand() throws {
+        let first = TerminalProcessRegistration(terminalID: UUID())
+        let second = TerminalProcessRegistration(terminalID: UUID())
+        let userConfig = GhosttyConfig(
+            url: URL(fileURLWithPath: "/tmp/ghostty-config"),
+            contents: "command = /bin/bash -l\nshell-integration = none",
+            fontFamilies: [], fontSize: nil, colorTheme: nil, keybinds: []
+        )
+        XCTAssertNotEqual(first.url, second.url)
+        XCTAssertTrue(first.command(userConfig: userConfig).contains("exec /bin/bash -l"))
+        XCTAssertEqual(first.shellIntegration(userConfig: userConfig), "none")
+        XCTAssertEqual(TerminalProcessRegistration.quote("a'b"), "'a'\\''b'")
+    }
+
+    @MainActor
+    func testHerdrOverrideProtectsEffectiveDirectoryFromOSCAndRestoresLatestShell() throws {
+        let shell = FileManager.default.homeDirectoryForCurrentUser.resolvingSymlinksInPath()
+        let pane = URL(fileURLWithPath: "/tmp").resolvingSymlinksInPath()
+        let outer = URL(fileURLWithPath: "/").resolvingSymlinksInPath()
+        let state = TerminalTabState(workingDirectory: shell, userConfigProvider: { nil })
+        let coordinator = TerminalTabView.Coordinator()
+        coordinator.observeState(state)
+        var received: [URL] = []
+        state.onDirectoryChanged = { received.append($0) }
+
+        state.applyHerdrDirectoryUpdate(.override(pane))
+        coordinator.terminalDidChangeWorkingDirectory(outer.path)
+        state.applyHerdrDirectoryUpdate(.unchanged)
+        XCTAssertEqual(state.workingDirectory, pane)
+        XCTAssertEqual(received, [pane])
+
+        state.applyHerdrDirectoryUpdate(.restore(nil))
+        XCTAssertEqual(state.workingDirectory, outer)
+        XCTAssertEqual(received, [pane, outer])
+        state.applyHerdrDirectoryUpdate(.restore(nil))
+        XCTAssertEqual(received, [pane, outer])
+        state.close()
+    }
+
+    @MainActor
+    func testHerdrExitPrefersNativeOuterForegroundDirectory() {
+        let state = TerminalTabState(workingDirectory: URL(fileURLWithPath: "/tmp"), userConfigProvider: { nil })
+        state.applyHerdrDirectoryUpdate(.override(URL(fileURLWithPath: "/")))
+        state.receiveShellWorkingDirectory("/tmp")
+        let native = FileManager.default.homeDirectoryForCurrentUser.resolvingSymlinksInPath()
+        state.applyHerdrDirectoryUpdate(.restore(native))
+        XCTAssertEqual(state.workingDirectory, native)
+        state.receiveShellWorkingDirectory("/tmp")
+        XCTAssertEqual(state.workingDirectory, URL(fileURLWithPath: "/tmp").resolvingSymlinksInPath())
+        state.close()
+    }
+
+    @MainActor
+    func testHerdrPollingRequiresActiveAttachedSurfaceAndCloseReleasesOwner() throws {
+        var state: TerminalTabState? = TerminalTabState(
+            workingDirectory: FileManager.default.homeDirectoryForCurrentUser,
+            userConfigProvider: { nil }
+        )
+        weak var owner: TerminalTabState?
+        owner = state
+        state?.setHerdrSurfaceActive(true)
+        XCTAssertNil(state?.herdrFollower)
+        state?.setHerdrSurfaceAttached(true)
+        let follower = try XCTUnwrap(state?.herdrFollower)
+        XCTAssertTrue(follower.isRunning)
+        state?.setHerdrSurfaceActive(false)
+        XCTAssertFalse(follower.isRunning)
+        state?.setHerdrSurfaceActive(true)
+        XCTAssertTrue(follower.isRunning)
+        state?.setHerdrSurfaceAttached(false)
+        XCTAssertFalse(follower.isRunning)
+        state?.setHerdrSurfaceAttached(true)
+        XCTAssertTrue(follower.isRunning)
+        state?.close()
+        state?.close()
+        XCTAssertFalse(follower.isRunning)
+        XCTAssertNil(state?.herdrFollower)
+        XCTAssertNil(state?.onDirectoryChanged)
+        state = nil
+        XCTAssertNil(owner)
+    }
+
+    @MainActor
     func testDefaultTerminalConfigAdvertisesHyperlinkCapabilities() {
         guard case let .generated(contents) = TerminalTabState.configSource(for: nil) else {
             return XCTFail("기본 터미널에 링크 지원 환경이 필요하다.")

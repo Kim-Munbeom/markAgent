@@ -179,7 +179,7 @@ struct GhosttyConfig {
         }
     }
 
-    private static func parseLastValue(forKey key: String, from contents: String) -> String? {
+    static func parseLastValue(forKey key: String, from contents: String) -> String? {
         parseValues(forKey: key, from: contents).last
     }
 

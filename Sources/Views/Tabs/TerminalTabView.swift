@@ -17,6 +17,7 @@ struct TerminalTabView: NSViewRepresentable {
         view.isActiveTerminal = isStillActive
         view.connectSearch(state.search)
         context.coordinator.observeState(state)
+        state.setHerdrSurfaceActive(isActive)
         context.coordinator.onOpenFile = onOpenFile
         state.terminalView = view
         view.delegate = context.coordinator
@@ -53,6 +54,7 @@ struct TerminalTabView: NSViewRepresentable {
         context.coordinator.observeState(state)
         context.coordinator.onOpenFile = onOpenFile
         state.terminalView = nsView
+        state.setHerdrSurfaceActive(isActive)
 
         if isActive {
             TerminalFocusPolicy.requestFocus(nsView, isActive: isStillActive)
@@ -101,6 +103,8 @@ struct TerminalTabView: NSViewRepresentable {
 
         func detach(from view: AppTerminalView) {
             if state?.terminalView === view {
+                state?.setHerdrSurfaceAttached(false)
+                state?.setHerdrSurfaceActive(false)
                 state?.terminalView = nil
             }
             state = nil
@@ -112,11 +116,12 @@ struct TerminalTabView: NSViewRepresentable {
         }
 
         func terminalDidClose(processAlive: Bool) {
+            state?.setHerdrSurfaceAttached(false)
             state?.onCloseRequested?()
         }
 
         func terminalDidChangeWorkingDirectory(_ path: String) {
-            state?.updateWorkingDirectory(path)
+            state?.receiveShellWorkingDirectory(path)
         }
 
         func terminalDidRequestDesktopNotification(title: String, body: String) {
@@ -156,9 +161,12 @@ struct TerminalTabView: NSViewRepresentable {
             state?.search.receiveSelected(selected)
         }
 
-        func terminalDidAttachSurface(_ surface: TerminalSurface) {}
+        func terminalDidAttachSurface(_ surface: TerminalSurface) {
+            state?.setHerdrSurfaceAttached(true)
+        }
 
         func terminalDidDetachSurface() {
+            state?.setHerdrSurfaceAttached(false)
             (state?.terminalView as? SearchAwareTerminalView)?.dismissTerminalSearch(restoringFocus: false)
         }
     }
