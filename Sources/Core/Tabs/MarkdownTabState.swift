@@ -41,9 +41,9 @@ final class MarkdownTabState {
     func startWatching(url: URL) {
         Task {
             await stopWatching()
-            let watcher = FileWatcher { [weak self] in
-                guard let self else { return }
-                self.document.loadIfNotRecentlySaved(from: url)
+            let watcher = FileWatcher { [weak document = self.document] in
+                guard let document else { return }
+                document.loadIfNotRecentlySaved(from: url)
             }
             self.fileWatcher = watcher
             await watcher.startWatching(url: url)

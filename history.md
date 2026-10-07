@@ -79,6 +79,7 @@
 79. [세션 75: 영역별 포인터 복원과 터미널 커서 요청 처리](#세션-75-영역별-포인터-복원과-터미널-커서-요청-처리)
 80. [세션 76: herdr 링크 호환성과 프롬프트 미리보기 개선](#세션-76-herdr-링크-호환성과-프롬프트-미리보기-개선)
 81. [세션 77: Claude OAuth 사용량과 상태바 표시 개선](#세션-77-claude-oauth-사용량과-상태바-표시-개선)
+82. [세션 78: 기존 Swift 경고 수정과 Fable 표시 순서 보정](#세션-78-기존-swift-경고-수정과-fable-표시-순서-보정)
 
 ---
 
@@ -193,6 +194,7 @@
 | 105 | 상태바 수동 갱신과 절전 방지 표시 | 새로고침을 하단으로 이동하고 Fable 일반 행·대문자 표기 및 On/Off·채운 커피잔 적용 |
 | 106 | MarkAgent 권한 코드 식별자 불일치 확인 | 실제 TCC 검증 실패를 확인하고 사용자 권한 재등록 후 새 엔진의 세 권한 granted 확인 |
 | 107 | Claude 사용량 개선 v26.10.07 릴리스 준비 | 기능 커밋과 최종 UI 검증 후 날짜 버전을 적용하고 dev/main PR 병합·서명·공증 배포 준비 |
+| 108 | 기존 weak capture 및 MainActor 경고 수정 | 문서 weak 캡처와 구체적 뷰 생성의 actor 경계를 적용하고 release 경고 0개·전체 386개 테스트 통과 |
 
 ---
 
@@ -3952,3 +3954,24 @@ Orca 원본의 Claude 사용량 조회와 갱신 방식을 확인해 기존 상�
 로컬 날짜의 `YY.MM.DD` 규칙에 따라 두 번들 버전 필드를 `26.10.07`로 동일하게 적용한다. 기능 브랜치 `feat/claude-oauth-usage-20261007`에서 dev PR, 이어 dev에서 main PR을 merge commit 방식으로 병합한다. 최종 main에서 같은 Developer ID와 `markagent` 프로필로 서명·공증·stapling한 ZIP을 게시하고 업로드된 자산을 다시 내려받아 해시·버전·서명·공증을 확인한다.
 
 변경 파일: `Sources/App/Info.plist`, `history.md`
+
+---
+
+## 세션 78: 기존 Swift 경고 수정과 Fable 표시 순서 보정
+
+> 날짜: 2026-10-07
+> 경로: ~/workspace/markAgent
+
+이전 세션에서 변경 범위 밖으로 남긴 Swift 경고 세 개를 수정하고 하단 Fable 표시 순서를 보정했다. 사용자 후속 요청에 따라 검증된 변경의 dev/main PR 병합과 같은 날 재릴리스를 준비한다.
+
+### 대화 1: 기존 weak capture와 MainActor 경고 세 개 수정
+
+**사용자:**
+> 이전 세션에서 발견된 변경 범위 밖의 기존 weak capture 및 main actor 격리 경고 3개를 수정해야해.
+
+**응답:**
+`history.md`의 기존 기록과 release 빌드에서 `MarkdownTabState.swift`의 외부 Task strong 캡처와 내부 weak self 캡처 충돌, `MarkdownRenderer.swift`의 이미지·코드 뷰 생성 MainActor 격리 경고 두 개를 확인했다. 파일 감시 콜백은 탭 대신 사용하는 문서를 weak로 캡처한다. 비격리 `MarkupVisitor` 계약은 유지하며 기존 MainActor 렌더링 진입점에서 구체적인 뷰를 생성할 때만 `MainActor.assumeIsolated`를 사용한다. `AnyView` 타입 소거는 actor 경계 밖에서 수행하고 코드 블록의 언어 문자열은 AST에서 미리 추출한다.
+
+첫 병렬 수정의 `AnyView` 반환은 Sendable 제약으로 실패해 그대로 완료로 취급하지 않고 직접 수정했다. 최종 release 빌드는 경고 없이 통과했고 전체 386개 테스트의 실패는 0개였다. 실제 격리 QA 앱에서 이미지·Swift 코드 강조, 외부 파일 수정 자동 반영과 문서 닫기를 확인했다. 문서 닫기 전후 `leaks`는 모두 기존 AppIntents NSXPCConnection root 세 개의 416건/26400바이트만 보고했으며 제품 코드 root는 없었다. 직접 실행한 QA 앱과 전용 설정만 정리했고 사용자 앱·미추적 파일은 보존했다.
+
+변경 파일: `Sources/Core/Tabs/MarkdownTabState.swift`, `Sources/Rendering/MarkdownRenderer.swift`, `history.md`
