@@ -27,7 +27,7 @@ final class ClaudeStatuslineUsageStoreTests: XCTestCase {
             let usage = try ClaudeStatuslineUsageStore.load(homeDirectory: home, now: now.addingTimeInterval(10))
             XCTAssertEqual(usage.primary.name, "5 hours")
             XCTAssertEqual(usage.primary.usedPercent, 23.5)
-            XCTAssertEqual(usage.primary.resetsAt.timeIntervalSince1970, 1_789_018_000)
+            XCTAssertEqual(try XCTUnwrap(usage.primary.resetsAt).timeIntervalSince1970, 1_789_018_000)
             XCTAssertEqual(usage.secondary?.name, "7 days")
             XCTAssertEqual(usage.secondary?.usedPercent, 41.2)
             XCTAssertEqual(usage.observedAt, now)

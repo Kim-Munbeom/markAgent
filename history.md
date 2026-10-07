@@ -78,6 +78,7 @@
 78. [세션 74: 터미널 링크 일반 클릭과 문서 열기](#세션-74-터미널-링크-일반-클릭과-문서-열기)
 79. [세션 75: 영역별 포인터 복원과 터미널 커서 요청 처리](#세션-75-영역별-포인터-복원과-터미널-커서-요청-처리)
 80. [세션 76: herdr 링크 호환성과 프롬프트 미리보기 개선](#세션-76-herdr-링크-호환성과-프롬프트-미리보기-개선)
+81. [세션 77: Claude OAuth 사용량과 상태바 표시 개선](#세션-77-claude-oauth-사용량과-상태바-표시-개선)
 
 ---
 
@@ -188,6 +189,10 @@
 | 101 | 같은 날 긴급 수정 v26.10.06.1 준비 | 사용자 선택에 따라 기존 v26.10.06을 보존하고 날짜 뒤 .1을 붙인 재릴리스 버전 적용 |
 | 102 | 링크 이탈 커서 복원 | 임시 링크 커서와 실제 OSC 22 요청을 입력 경계로 분리하고 전체 359개 테스트 통과 |
 | 103 | 커서 복원 긴급 수정 v26.10.06.2 준비 | 같은 날 긴급 수정 버전을 이어 적용하고 기존 릴리스를 보존하며 dev/main 병합·공증 배포 준비 |
+| 104 | Claude OAuth 사용량과 Fable 한도 표시 | Orca 방식의 기존 자격 증명·사용량 API·갱신 주기를 적용하고 Fable 주간 한도와 남은양 표시 지원 |
+| 105 | 상태바 수동 갱신과 절전 방지 표시 | 새로고침을 하단으로 이동하고 Fable 일반 행·대문자 표기 및 On/Off·채운 커피잔 적용 |
+| 106 | MarkAgent 권한 코드 식별자 불일치 확인 | 실제 TCC 검증 실패를 확인하고 사용자 권한 재등록 후 새 엔진의 세 권한 granted 확인 |
+| 107 | Claude 사용량 개선 v26.10.07 릴리스 준비 | 기능 커밋과 최종 UI 검증 후 날짜 버전을 적용하고 dev/main PR 병합·서명·공증 배포 준비 |
 
 ---
 
@@ -3886,5 +3891,64 @@ Ghostty의 마우스 캡처 상태에서는 원래 mouseMoved를 먼저 전달�
 
 **응답:**
 수정·회귀 테스트·히스토리를 `0335801`로 기록했다. 기존 날짜 릴리스 `v26.10.06`과 긴급 수정 `v26.10.06.1`을 보존하고 같은 날의 다음 긴급 수정 버전 `26.10.06.2`를 두 번들 필드에 동일하게 적용한다. 최종 main의 격리 release 빌드에서 Developer ID 서명·Apple 공증·ZIP 검증 후 게시 자산을 재다운로드하여 확인한다.
+
+변경 파일: `Sources/App/Info.plist`, `history.md`
+
+---
+
+## 세션 77: Claude OAuth 사용량과 상태바 표시 개선
+
+> 날짜: 2026-10-07
+> 경로: ~/workspace/markAgent
+
+Orca 원본의 Claude 사용량 조회와 갱신 방식을 확인해 기존 상태줄 수신 대신 OAuth 사용량 API를 사용하도록 변경했다. 사용량/남은양 선택, Fable 주간 한도와 상태바 표시를 보강한 뒤 사용자가 요청한 dev/main PR 병합과 릴리즈를 준비한다.
+
+### 대화 1: Orca 방식의 사용량 조회와 표시 선택
+
+**사용자:**
+> Orca 원본과 같은 방식으로 Claude 사용량과 refresh 주기를 적용하고, Max 요금제의 fable 표시와 설정의 사용량/남은양 전환을 구현해줘.
+
+**응답:**
+기존 Claude Code 자격 증명을 범위별 키체인, 기존 키체인, 자격 증명 파일 순서로 읽고 Anthropic OAuth 사용량 API를 조회한다. 자격 증명을 변경하거나 로그로 출력하지 않는다. 자동 갱신 15분, 최초 1초 지연, 재활성화 5분 경과 기준과 30초부터 최대 15분의 실패 재시도에 서버 Retry-After를 반영했다.
+
+5시간·7일 구간과 응답에 제공된 Fable 주간 한도를 표시한다. 설정의 사용량/남은양 선택은 UserDefaults에 저장하며 하단 비율·막대·상세 행·접근성 값에 동일하게 적용한다. 리셋 시각이 없는 유효한 구간도 보존한다. 취소·중복 갱신·폴링 모델 해제와 기존 Codex 경로를 회귀 테스트로 확인했다.
+
+변경 파일: `Sources/Core/ProviderUsageClients.swift`, `Sources/Core/SubscriptionStatusModel.swift`, `Sources/App/AppDelegate.swift`, `Sources/App/PreferencesView.swift`, `Tests/MarkAgentTests/ProviderUsageClientTests.swift`, `Tests/MarkAgentTests/SubscriptionStatusModelTests.swift`, `Tests/MarkAgentTests/ClaudeStatuslineUsageStoreTests.swift`
+
+### 대화 2: 하단 갱신 버튼과 Fable·커피잔 표시
+
+**사용자:**
+> 새로고침 버튼을 하단 사용량 위치로 옮기고, Fable은 다른 구간과 같은 행으로 표시하면서 하단에도 함께 보여줘. 외부 표기 대신 On/Off로 표시하고 켜짐 커피잔은 채워줘. fable 표기는 Fable로 통일해줘.
+
+**응답:**
+수동 갱신을 하단 사용량 옆으로 옮기고 갱신 중 중복 클릭을 막는다. Fable은 일반 구간과 같은 행을 사용하고 하단 Claude 요약에도 표시한다. 절전 방지의 실제 상태를 On/Off와 채운 커피잔으로 표시하되 토글은 앱 소유 assertion만 제어하고 외부 상태는 보존한다.
+
+실제 SwiftUI 뷰의 사용량/남은양·On/Off·밝은/어두운 모드와 640/980pt 상태바 및 420pt popover를 렌더링했다. 릴리즈 전 최종 diff에서 남은 Fable 전용 배경을 찾아 제거했고 영향받는 렌더 검증을 다시 수행한다. 전체 Swift 테스트는 386개, 실패 0개로 통과했다. 마지막 스타일 수정 전 결과와 이후 집중 검증을 구분한다.
+
+이전 실제 QA 앱 시작 누수 검사에는 416건/19,936바이트의 기존 AppIntents/linkd NSXPC root만 관찰됐으며 제품 root나 누수 0을 주장하지 않는다. 실제 계정 Max 수치 대조와 물리 입력 QA는 별도 미확인이다.
+
+변경 파일: `Sources/Views/Main/BottomStatusBar.swift`, `Sources/App/Resources/en.lproj/Localizable.strings`, `Sources/App/Resources/ko.lproj/Localizable.strings`, `Tests/MarkAgentTests/BottomStatusBarLayoutTests.swift`, `README.md`, `DESIGN.md`
+
+### 대화 3: 허용 설정과 실제 권한 판정 불일치
+
+**사용자:**
+> 권한을 허용했는데 제어가 안 되는 문제도 Apple 공식 문서로 확인해줘. 재시작했어. 제거 후 다시 추가했어. 원인을 알았으니 이 문제는 종결하면 될 것 같아.
+
+**응답:**
+새 엔진으로 재시작해도 동일한 거부를 확인한 뒤 실제 tccd 로그에서 요청 실행 파일은 엔진이지만 책임 앱은 MarkAgent인 것을 확인했다. 현재 설치·실행 중 MarkAgent의 코드 해시는 일치하지만 TCC가 검사하는 이전 해시의 코드 요구사항은 -67050(errSecCSReqFailed)으로 실패했다. 캡처·접근성 API 호출이 실제로 도달했으므로 SDK 누락이 아니었다.
+
+사용자가 MarkAgent 권한 항목을 제거 후 재등록하자 동일 바이너리의 새 읽기 전용 엔진에서 capture/input/AX가 모두 granted, 디스플레이 1개로 바뀌었다. 현재 Developer ID DR은 Bundle ID와 Team 기반이며 고정 코드 해시를 포함하지 않는다. 초기 무서명 앱 등록 후 서명된 앱 설치가 원인일 가능성은 과거 이력을 직접 확인하지 못했으므로 확정하지 않았다. 추가 입력 실험 없이 사용자 요청으로 종결했다.
+
+변경 파일: 제품 코드 변경 없음. 조사 근거는 `.omo/evidence/claude-usage-20261007/apple-permissions.md`에 기록했고 임시 근거는 커밋 대상에서 제외한다.
+
+### 대화 4: dev/main PR 병합과 릴리즈
+
+**사용자:**
+> dev pr 머지, main pr 머지, 릴리즈까지 이어서 진행해줘.
+
+**응답:**
+전체 386개 테스트가 실패 없이 통과했고 최종 Fable 일반 행 수정 후 레이아웃 회귀 테스트도 통과했다. 사용량/남은양·밝은/어두운 모드의 새 popover 네 화면을 직접 확인했다. 구현·직접 테스트·문서·세션 기록을 기능 커밋 `82263b1`로 기록했으며 기존 미추적 문서·ZIP과 `.omo` 근거 파일은 커밋에서 제외했다.
+
+로컬 날짜의 `YY.MM.DD` 규칙에 따라 두 번들 버전 필드를 `26.10.07`로 동일하게 적용한다. 기능 브랜치 `feat/claude-oauth-usage-20261007`에서 dev PR, 이어 dev에서 main PR을 merge commit 방식으로 병합한다. 최종 main에서 같은 Developer ID와 `markagent` 프로필로 서명·공증·stapling한 ZIP을 게시하고 업로드된 자산을 다시 내려받아 해시·버전·서명·공증을 확인한다.
 
 변경 파일: `Sources/App/Info.plist`, `history.md`

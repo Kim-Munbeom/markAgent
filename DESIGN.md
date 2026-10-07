@@ -220,8 +220,9 @@ MainContainerView
   one shared popover anchored to the left usage segment.
 - At widths that cannot display every provider, summaries collapse to one `Usage` button with
   the enabled-provider count. Caffeinate and memory never disappear.
-- Caffeinate is a plain toggle button with `cup.and.saucer` and an explicit `On`/`Off` label.
-  Its popover/help text reports whether the app currently owns a sleep-prevention assertion.
+- Caffeinate는 실제 절전 방지 활성 상태를 `On`/`Off`로 표시하고, 활성일 때
+  `cup.and.saucer.fill`, 비활성일 때 `cup.and.saucer`를 사용한다. 도움말은 외부
+  assertion과 앱 소유 assertion을 구분하며, 토글은 앱 소유 assertion만 제어한다.
 - Memory uses `memorychip` and the current MarkAgent resident-memory value in MB or GB.
 - Loading, unavailable, disabled, and stale provider states are expressed with text and symbols;
   color is supplementary and never the only state signal.
@@ -240,8 +241,10 @@ Machine-facing identifiers:
 
 The popover presents one row per enabled provider. Each row contains provider identity,
 refresh/error state, primary and secondary window progress where available, absolute/relative
-reset information, and no raw command output. A fixed header contains `Usage`, a refresh
-button, and refresh progress. A footer opens the existing Settings tab.
+reset information, and no raw command output. fable 전용 주간 한도는 응답에 있을 때 별도로
+표시한다. 고정 헤더는 `Usage`를 표시하고, 수동 새로고침 버튼은 popover가 아니라 하단
+사용량 영역 옆에 둔다. Settings의 사용량/남은양 선택을 모든 비율과 막대에 적용하며
+저장된 원본 비율은 사용량으로 유지한다. A footer opens the existing Settings tab.
 
 The popover is keyboard reachable, keeps provider rows in source order, exposes progress values
 to accessibility, and uses native SwiftUI popover behavior rather than a custom floating
@@ -269,8 +272,8 @@ Keychain item identified by stable service/account names and replaced with `SecI
 
 ### Interaction, lifecycle, and accessibility
 
-- Provider refresh starts immediately when the active window launches, after Settings
-  registration changes, and from the explicit refresh button. While the app is active and not
+- 최초 사용량 갱신은 Orca와 동일하게 활성 창 실행 1초 후 시작한다. Settings 등록 변경과
+  수동 버튼은 즉시 갱신한다. While the app is active and not
   minimized, usage polls every 15 minutes. Focus/show/restore refreshes only data at least five
   minutes old. Claude/Codex failures retry after 30 seconds with exponential backoff capped at
   15 minutes. Manual refresh bypasses the age gate, while stale completions cannot replace a
