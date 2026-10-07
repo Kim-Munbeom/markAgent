@@ -67,9 +67,12 @@ struct MarkdownRenderer: MarkupVisitor {
 
     mutating func visitParagraph(_ paragraph: Paragraph) -> AnyView {
         if let image = Self.standaloneImage(in: paragraph, baseURL: baseURL) {
-            return AnyView(
+            // 비격리 visitor에서 MainActor 뷰를 생성하고 타입 소거는 경계 밖에서 수행한다.
+            let preview = MainActor.assumeIsolated {
                 MarkdownImagePreview(reference: image)
-                    .padding(.bottom, 8)
+            }
+            return AnyView(
+                preview.padding(.bottom, 8)
             )
         }
 
@@ -166,10 +169,13 @@ struct MarkdownRenderer: MarkupVisitor {
         let code = codeBlock.code.hasSuffix("\n")
             ? String(codeBlock.code.dropLast())
             : codeBlock.code
+        let language = codeBlock.language
 
-        return AnyView(
-            HighlightedCodeBlock(code: code, language: codeBlock.language)
-        )
+        // 실제 렌더링 진입점과 SwiftUI body는 MainActor에서 실행된다.
+        let block = MainActor.assumeIsolated {
+            HighlightedCodeBlock(code: code, language: language)
+        }
+        return AnyView(block)
     }
 
     // MARK: ThematicBreak

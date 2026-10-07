@@ -79,6 +79,7 @@
 79. [세션 75: 영역별 포인터 복원과 터미널 커서 요청 처리](#세션-75-영역별-포인터-복원과-터미널-커서-요청-처리)
 80. [세션 76: herdr 링크 호환성과 프롬프트 미리보기 개선](#세션-76-herdr-링크-호환성과-프롬프트-미리보기-개선)
 81. [세션 77: Claude OAuth 사용량과 상태바 표시 개선](#세션-77-claude-oauth-사용량과-상태바-표시-개선)
+82. [세션 78: 기존 Swift 경고 수정과 Fable 표시 순서 보정](#세션-78-기존-swift-경고-수정과-fable-표시-순서-보정)
 
 ---
 
@@ -193,6 +194,9 @@
 | 105 | 상태바 수동 갱신과 절전 방지 표시 | 새로고침을 하단으로 이동하고 Fable 일반 행·대문자 표기 및 On/Off·채운 커피잔 적용 |
 | 106 | MarkAgent 권한 코드 식별자 불일치 확인 | 실제 TCC 검증 실패를 확인하고 사용자 권한 재등록 후 새 엔진의 세 권한 granted 확인 |
 | 107 | Claude 사용량 개선 v26.10.07 릴리스 준비 | 기능 커밋과 최종 UI 검증 후 날짜 버전을 적용하고 dev/main PR 병합·서명·공증 배포 준비 |
+| 108 | 기존 weak capture 및 MainActor 경고 수정 | 문서 weak 캡처와 구체적 뷰 생성의 actor 경계를 적용하고 release 경고 0개·전체 386개 테스트 통과 |
+| 109 | 하단 Fable 이름과 비율 순서 보정 | Fable을 비율 앞으로 이동하고 used/remaining·밝은/어두운 모드·좁은 폭의 기존 실제 렌더 검증 통과 |
+| 110 | 경고 수정 및 Fable 순서 v26.10.07.1 재릴리스 준비 | 사용자 선택에 따라 기존 v26.10.07을 보존하고 두 버전 필드에 .1 예외를 적용해 dev/main 병합·공증 배포 준비 |
 
 ---
 
@@ -3950,5 +3954,49 @@ Orca 원본의 Claude 사용량 조회와 갱신 방식을 확인해 기존 상�
 전체 386개 테스트가 실패 없이 통과했고 최종 Fable 일반 행 수정 후 레이아웃 회귀 테스트도 통과했다. 사용량/남은양·밝은/어두운 모드의 새 popover 네 화면을 직접 확인했다. 구현·직접 테스트·문서·세션 기록을 기능 커밋 `82263b1`로 기록했으며 기존 미추적 문서·ZIP과 `.omo` 근거 파일은 커밋에서 제외했다.
 
 로컬 날짜의 `YY.MM.DD` 규칙에 따라 두 번들 버전 필드를 `26.10.07`로 동일하게 적용한다. 기능 브랜치 `feat/claude-oauth-usage-20261007`에서 dev PR, 이어 dev에서 main PR을 merge commit 방식으로 병합한다. 최종 main에서 같은 Developer ID와 `markagent` 프로필로 서명·공증·stapling한 ZIP을 게시하고 업로드된 자산을 다시 내려받아 해시·버전·서명·공증을 확인한다.
+
+변경 파일: `Sources/App/Info.plist`, `history.md`
+
+---
+
+## 세션 78: 기존 Swift 경고 수정과 Fable 표시 순서 보정
+
+> 날짜: 2026-10-07
+> 경로: ~/workspace/markAgent
+
+이전 세션에서 변경 범위 밖으로 남긴 Swift 경고 세 개를 수정하고 하단 Fable 표시 순서를 보정했다. 사용자 후속 요청에 따라 검증된 변경의 dev/main PR 병합과 같은 날 재릴리스를 준비한다.
+
+### 대화 1: 기존 weak capture와 MainActor 경고 세 개 수정
+
+**사용자:**
+> 이전 세션에서 발견된 변경 범위 밖의 기존 weak capture 및 main actor 격리 경고 3개를 수정해야해.
+
+**응답:**
+`history.md`의 기존 기록과 release 빌드에서 `MarkdownTabState.swift`의 외부 Task strong 캡처와 내부 weak self 캡처 충돌, `MarkdownRenderer.swift`의 이미지·코드 뷰 생성 MainActor 격리 경고 두 개를 확인했다. 파일 감시 콜백은 탭 대신 사용하는 문서를 weak로 캡처한다. 비격리 `MarkupVisitor` 계약은 유지하며 기존 MainActor 렌더링 진입점에서 구체적인 뷰를 생성할 때만 `MainActor.assumeIsolated`를 사용한다. `AnyView` 타입 소거는 actor 경계 밖에서 수행하고 코드 블록의 언어 문자열은 AST에서 미리 추출한다.
+
+첫 병렬 수정의 `AnyView` 반환은 Sendable 제약으로 실패해 그대로 완료로 취급하지 않고 직접 수정했다. 최종 release 빌드는 경고 없이 통과했고 전체 386개 테스트의 실패는 0개였다. 실제 격리 QA 앱에서 이미지·Swift 코드 강조, 외부 파일 수정 자동 반영과 문서 닫기를 확인했다. 문서 닫기 전후 `leaks`는 모두 기존 AppIntents NSXPCConnection root 세 개의 416건/26400바이트만 보고했으며 제품 코드 root는 없었다. 직접 실행한 QA 앱과 전용 설정만 정리했고 사용자 앱·미추적 파일은 보존했다.
+
+변경 파일: `Sources/Core/Tabs/MarkdownTabState.swift`, `Sources/Rendering/MarkdownRenderer.swift`, `history.md`
+
+### 대화 2: Fable 이름을 남은 비율 앞에 표시
+
+**사용자:**
+> 추가로 57% 남음 Fable 이 아니라 Fable 57% 남음 이라고 표시되어야 할 것 같아.
+
+**응답:**
+하단 Claude 요약에서 Fable 이름을 qualified percentage 텍스트 앞에 배치했다. 비율 계산과 기존 used/remaining 설정은 유지한다. 실제 상태바 캡처에서 `Fable 36% 남음`과 `Fable 64% 사용` 순서를 확인했고 밝은/어두운 모드, 640/980pt 폭과 On/Off 상태 16개 및 인접 popover 4개를 직접 검사했다. 좁은 폭의 기존 compact 전환도 겹침 없이 유지된다. 최종 전체 386개 테스트와 release 경고 0개, 직접 diff 검증 및 수정된 DAG 검증 게이트가 통과했다.
+
+변경 파일: `Sources/Views/Main/BottomStatusBar.swift`, `history.md`
+
+### 대화 3: dev/main PR 병합과 같은 날 재릴리스
+
+**사용자:**
+> dev pr merge, main pr merge, release it
+> 릴리스 버전: 26.10.07.1 (Recommended)
+
+**응답:**
+검증된 Swift 경고 수정과 히스토리는 `4f7fca8`, Fable 순서 변경과 히스토리는 `208f4db`로 분리해 기록했다. 사용자가 이번 재릴리스에 한해 날짜 버전 뒤 `.1` 예외를 명시 선택했으므로 두 번들 버전 필드에 `26.10.07.1`을 동일하게 적용하고 기존 `v26.10.07` 태그·자산을 보존한다.
+
+기능 브랜치 `fix/swift-warnings-fable-order-20261007`에서 dev PR을 merge commit으로 병합한 뒤 dev에서 main PR을 같은 방식으로 병합한다. 최종 변경에 대한 직접 QA 근거를 재사용하고 별도 고정 review 작업 트리에서 단일 native gate reviewer를 실행한다. 병합된 main의 격리 release 작업 트리에서 Developer ID 서명·`markagent` 프로필 공증·stapling·압축 해제 Gatekeeper 검증을 수행하고 `v26.10.07.1` 및 `MarkAgent-v26.10.07.1.zip`을 게시한다. 게시 ZIP을 다시 내려받아 원본 일치·SHA-256·두 버전·서명·공증을 검증한다. 사용자 설치 앱과 실행 PID, 기존 미추적 문서·ZIP은 보존한다.
 
 변경 파일: `Sources/App/Info.plist`, `history.md`
