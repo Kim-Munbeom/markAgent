@@ -14,6 +14,33 @@ final class HerdrProcessInspectorTests: XCTestCase {
         XCTAssertNil(HerdrProcessInspector.terminalContext(UUID()))
     }
 
+    func testRegistrationPreservesInheritedShellUmask() async throws {
+        let registration = TerminalProcessRegistration(terminalID: UUID())
+        defer { registration.remove() }
+        let config = GhosttyConfig(
+            url: URL(fileURLWithPath: "/tmp/ghostty-config"),
+            contents: "command = /bin/zsh -f -c umask",
+            fontFamilies: [], fontSize: nil, colorTheme: nil, keybinds: []
+        )
+        let ended = expectation(description: "기존 umask를 출력한 셸 종료")
+        let output = Pipe()
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/zsh")
+        process.arguments = ["-f", "-c", "umask 027; exec " + registration.command(userConfig: config)]
+        process.standardOutput = output
+        process.standardError = FileHandle.nullDevice
+        process.terminationHandler = { _ in ended.fulfill() }
+        try process.run()
+        defer { if process.isRunning { process.terminate() } }
+        await fulfillment(of: [ended], timeout: 5)
+        XCTAssertEqual(process.terminationStatus, 0)
+        let data = output.fileHandleForReading.readDataToEndOfFile()
+        let value = String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+        XCTAssertEqual(Int(value, radix: 8), 0o027)
+        let attributes = try FileManager.default.attributesOfItem(atPath: registration.url.path)
+        XCTAssertEqual((attributes[.posixPermissions] as? NSNumber)?.intValue, 0o600)
+    }
+
     func testRealPTYRegistrationResolvesOwnedForegroundWithoutGhosttyGetters() async throws {
         let id = UUID()
         let registration = TerminalProcessRegistration(terminalID: id)

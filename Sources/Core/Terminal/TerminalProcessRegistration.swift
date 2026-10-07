@@ -21,9 +21,9 @@ final class TerminalProcessRegistration: Sendable {
         let original = configured ?? Self.quote(shell) + " -l"
         let temporary = url.appendingPathExtension("tmp")
         // -f는 등록용 zsh가 사용자 시작 파일을 실행하지 않게 한다. exec 이후 원래 셸이 한 번 실행한다.
-        let script = "umask 077; /bin/mkdir -p \(Self.quote(url.deletingLastPathComponent().path)); "
+        let script = "(umask 077; /bin/mkdir -p \(Self.quote(url.deletingLastPathComponent().path)); "
             + "printf '%s\\n%s\\n' \"$$\" \"$(/usr/bin/tty)\" > \(Self.quote(temporary.path)) "
-            + "&& /bin/mv -f \(Self.quote(temporary.path)) \(Self.quote(url.path)); exec \(original)"
+            + "&& /bin/mv -f \(Self.quote(temporary.path)) \(Self.quote(url.path))); exec \(original)"
         return "/bin/zsh -f -c " + Self.quote(script)
     }
 

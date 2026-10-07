@@ -4055,3 +4055,14 @@ space/pane 추적은 herdr 세션 API에 특화하고, cwd 소비 경로는 기�
 검증한 기능과 기록을 `feat: follow herdr pane working directory` 커밋으로 분리했다. 두 번들 버전 필드를 사용자 선택값 `26.10.07.2`로 맞추고, 고정 review 작업 트리에서 최종 단일 native gate review와 release 빌드를 수행한다. 통과한 기능 브랜치의 dev PR, 이어서 dev의 main PR을 merge commit으로 병합한 뒤 격리된 main 작업 트리에서 Developer ID 서명·공증·stapling과 게시 ZIP 재다운로드 검증을 수행한다. 기존 릴리즈 및 사용자 설치 앱은 보존한다.
 
 변경 파일: `Sources/App/Info.plist`, `history.md`
+
+---
+
+### 대화 4: 최종 리뷰의 셸 권한 회귀 수정
+
+**응답:**
+고정 review 후보 `d83740b`의 전체 412개 테스트와 release 빌드가 exit 0으로 통과했다. 최종 reviewer는 등록용 `umask 077`이 원래 셸에 상속되는 P2 회귀를 발견했다. 등록 파일 작성과 이동만 subshell에서 수행해 원래 셸의 권한 설정과 PID를 보존하도록 수정했다.
+
+새 결정적 테스트는 부모의 `umask 027`이 원래 셸에서 유지되고 등록 파일은 0600으로 생성됨을 확인한다. 실제 PTY 등록을 포함한 `HerdrProcessInspectorTests` 11개가 0 failures, exit 0으로 통과했고 두 변경 Swift 파일의 LSP 오류는 없었다. 기존 실패 검토 작업 트리를 정리한 뒤 수정 후보의 영향 QA와 delta gate review를 진행한다.
+
+변경 파일: `Sources/Core/Terminal/TerminalProcessRegistration.swift`, `Tests/MarkAgentTests/HerdrProcessInspectorTests.swift`, `history.md`
