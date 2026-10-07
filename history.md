@@ -196,6 +196,7 @@
 | 107 | Claude 사용량 개선 v26.10.07 릴리스 준비 | 기능 커밋과 최종 UI 검증 후 날짜 버전을 적용하고 dev/main PR 병합·서명·공증 배포 준비 |
 | 108 | 기존 weak capture 및 MainActor 경고 수정 | 문서 weak 캡처와 구체적 뷰 생성의 actor 경계를 적용하고 release 경고 0개·전체 386개 테스트 통과 |
 | 109 | 하단 Fable 이름과 비율 순서 보정 | Fable을 비율 앞으로 이동하고 used/remaining·밝은/어두운 모드·좁은 폭의 기존 실제 렌더 검증 통과 |
+| 110 | 경고 수정 및 Fable 순서 v26.10.07.1 재릴리스 준비 | 사용자 선택에 따라 기존 v26.10.07을 보존하고 두 버전 필드에 .1 예외를 적용해 dev/main 병합·공증 배포 준비 |
 
 ---
 
@@ -3986,3 +3987,16 @@ Orca 원본의 Claude 사용량 조회와 갱신 방식을 확인해 기존 상�
 하단 Claude 요약에서 Fable 이름을 qualified percentage 텍스트 앞에 배치했다. 비율 계산과 기존 used/remaining 설정은 유지한다. 실제 상태바 캡처에서 `Fable 36% 남음`과 `Fable 64% 사용` 순서를 확인했고 밝은/어두운 모드, 640/980pt 폭과 On/Off 상태 16개 및 인접 popover 4개를 직접 검사했다. 좁은 폭의 기존 compact 전환도 겹침 없이 유지된다. 최종 전체 386개 테스트와 release 경고 0개, 직접 diff 검증 및 수정된 DAG 검증 게이트가 통과했다.
 
 변경 파일: `Sources/Views/Main/BottomStatusBar.swift`, `history.md`
+
+### 대화 3: dev/main PR 병합과 같은 날 재릴리스
+
+**사용자:**
+> dev pr merge, main pr merge, release it
+> 릴리스 버전: 26.10.07.1 (Recommended)
+
+**응답:**
+검증된 Swift 경고 수정과 히스토리는 `4f7fca8`, Fable 순서 변경과 히스토리는 `208f4db`로 분리해 기록했다. 사용자가 이번 재릴리스에 한해 날짜 버전 뒤 `.1` 예외를 명시 선택했으므로 두 번들 버전 필드에 `26.10.07.1`을 동일하게 적용하고 기존 `v26.10.07` 태그·자산을 보존한다.
+
+기능 브랜치 `fix/swift-warnings-fable-order-20261007`에서 dev PR을 merge commit으로 병합한 뒤 dev에서 main PR을 같은 방식으로 병합한다. 최종 변경에 대한 직접 QA 근거를 재사용하고 별도 고정 review 작업 트리에서 단일 native gate reviewer를 실행한다. 병합된 main의 격리 release 작업 트리에서 Developer ID 서명·`markagent` 프로필 공증·stapling·압축 해제 Gatekeeper 검증을 수행하고 `v26.10.07.1` 및 `MarkAgent-v26.10.07.1.zip`을 게시한다. 게시 ZIP을 다시 내려받아 원본 일치·SHA-256·두 버전·서명·공증을 검증한다. 사용자 설치 앱과 실행 PID, 기존 미추적 문서·ZIP은 보존한다.
+
+변경 파일: `Sources/App/Info.plist`, `history.md`
