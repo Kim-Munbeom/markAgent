@@ -4042,3 +4042,16 @@ space/pane 추적은 herdr 세션 API에 특화하고, cwd 소비 경로는 기�
 누수 점검은 같은 소유 PID에서 전후 모두 416건·19,936바이트였으며, 전부 기존 `LNDaemonApplicationInterface`의 LaunchServices NSXPCConnection root 3개였다. herdr follower·소켓·등록 객체의 새 root는 없었다. libghostty-spm PR #23은 병합됐으며 사용 중인 `1.4.0`(`356f730`)의 복사 구현에 수정이 포함됨을 확인했다. 기존 로컬 패치는 제거하지 않았다. 사용자 앱과 herdr 세션, 기존 미추적 파일은 보존했다.
 
 변경 파일: `Sources/App/AppDelegate.swift`, `Sources/Core/Terminal/TerminalProcessRegistration.swift`, `Sources/Core/Terminal/HerdrProcessInspector.swift`, `Sources/Core/Terminal/HerdrDirectoryFollower.swift`, `Sources/Core/Tabs/GhosttyConfig.swift`, `Sources/Core/Tabs/TerminalTabState.swift`, `Sources/Views/Tabs/TerminalTabView.swift`, `Tests/MarkAgentTests/HerdrProcessInspectorTests.swift`, `Tests/MarkAgentTests/HerdrDirectoryFollowerTests.swift`, `Tests/MarkAgentTests/TerminalTabStateTests.swift`, `Tests/MarkAgentTests/TerminalLinkTests.swift`, `history.md`
+
+---
+
+### 대화 3: v26.10.07.2 릴리즈 준비
+
+**사용자:**
+> 구현해서 dev pr 머지, main pr 머지, 릴리즈까지 쭉 진행해줘
+> 릴리즈 버전: 26.10.07.2 (Recommended)
+
+**응답:**
+검증한 기능과 기록을 `feat: follow herdr pane working directory` 커밋으로 분리했다. 두 번들 버전 필드를 사용자 선택값 `26.10.07.2`로 맞추고, 고정 review 작업 트리에서 최종 단일 native gate review와 release 빌드를 수행한다. 통과한 기능 브랜치의 dev PR, 이어서 dev의 main PR을 merge commit으로 병합한 뒤 격리된 main 작업 트리에서 Developer ID 서명·공증·stapling과 게시 ZIP 재다운로드 검증을 수행한다. 기존 릴리즈 및 사용자 설치 앱은 보존한다.
+
+변경 파일: `Sources/App/Info.plist`, `history.md`
