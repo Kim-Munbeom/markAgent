@@ -4066,3 +4066,14 @@ space/pane 추적은 herdr 세션 API에 특화하고, cwd 소비 경로는 기�
 새 결정적 테스트는 부모의 `umask 027`이 원래 셸에서 유지되고 등록 파일은 0600으로 생성됨을 확인한다. 실제 PTY 등록을 포함한 `HerdrProcessInspectorTests` 11개가 0 failures, exit 0으로 통과했고 두 변경 Swift 파일의 LSP 오류는 없었다. 기존 실패 검토 작업 트리를 정리한 뒤 수정 후보의 영향 QA와 delta gate review를 진행한다.
 
 변경 파일: `Sources/Core/Terminal/TerminalProcessRegistration.swift`, `Tests/MarkAgentTests/HerdrProcessInspectorTests.swift`, `history.md`
+
+---
+
+### 대화 5: 수정 후보의 최종 검증과 PR 통합 기록
+
+**응답:**
+고정 후보 `18bd2af`의 전체 413개 테스트와 release 빌드가 exit 0으로 통과했다. 새 소유 QA 앱 PID `39082`에서 실제 원래 셸 umask `022`, 전용 herdr의 space B 파일 목록과 Cmd+O 기본 폴더, space A/subdir 파일 목록을 다시 확인했다. 새 앱의 leaks도 416건·19,936바이트로 기존 LaunchServices root 3개뿐이었다. 단일 delta gate reviewer가 C4 회귀 해소와 현재 QA·체크 근거를 확인해 APPROVE했다.
+
+원격 dev `aebf95f`, main `db14c2e`와 중복 PR이 없음을 확인했다. 사용자 요청에 따라 기능 브랜치를 dev PR로 병합하고 dev의 main PR을 이어서 병합한다. GitHub CI workflow가 없어 merge 전 검증은 고정 후보의 로컬 전체 테스트·release 빌드·native 앱 QA·gate review를 기준으로 한다. 최종 main의 서명·공증과 게시 산출물 검증은 별도로 수행한다.
+
+변경 파일: `history.md`
