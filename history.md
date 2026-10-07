@@ -195,6 +195,7 @@
 | 106 | MarkAgent 권한 코드 식별자 불일치 확인 | 실제 TCC 검증 실패를 확인하고 사용자 권한 재등록 후 새 엔진의 세 권한 granted 확인 |
 | 107 | Claude 사용량 개선 v26.10.07 릴리스 준비 | 기능 커밋과 최종 UI 검증 후 날짜 버전을 적용하고 dev/main PR 병합·서명·공증 배포 준비 |
 | 108 | 기존 weak capture 및 MainActor 경고 수정 | 문서 weak 캡처와 구체적 뷰 생성의 actor 경계를 적용하고 release 경고 0개·전체 386개 테스트 통과 |
+| 109 | 하단 Fable 이름과 비율 순서 보정 | Fable을 비율 앞으로 이동하고 used/remaining·밝은/어두운 모드·좁은 폭의 기존 실제 렌더 검증 통과 |
 
 ---
 
@@ -3975,3 +3976,13 @@ Orca 원본의 Claude 사용량 조회와 갱신 방식을 확인해 기존 상�
 첫 병렬 수정의 `AnyView` 반환은 Sendable 제약으로 실패해 그대로 완료로 취급하지 않고 직접 수정했다. 최종 release 빌드는 경고 없이 통과했고 전체 386개 테스트의 실패는 0개였다. 실제 격리 QA 앱에서 이미지·Swift 코드 강조, 외부 파일 수정 자동 반영과 문서 닫기를 확인했다. 문서 닫기 전후 `leaks`는 모두 기존 AppIntents NSXPCConnection root 세 개의 416건/26400바이트만 보고했으며 제품 코드 root는 없었다. 직접 실행한 QA 앱과 전용 설정만 정리했고 사용자 앱·미추적 파일은 보존했다.
 
 변경 파일: `Sources/Core/Tabs/MarkdownTabState.swift`, `Sources/Rendering/MarkdownRenderer.swift`, `history.md`
+
+### 대화 2: Fable 이름을 남은 비율 앞에 표시
+
+**사용자:**
+> 추가로 57% 남음 Fable 이 아니라 Fable 57% 남음 이라고 표시되어야 할 것 같아.
+
+**응답:**
+하단 Claude 요약에서 Fable 이름을 qualified percentage 텍스트 앞에 배치했다. 비율 계산과 기존 used/remaining 설정은 유지한다. 실제 상태바 캡처에서 `Fable 36% 남음`과 `Fable 64% 사용` 순서를 확인했고 밝은/어두운 모드, 640/980pt 폭과 On/Off 상태 16개 및 인접 popover 4개를 직접 검사했다. 좁은 폭의 기존 compact 전환도 겹침 없이 유지된다. 최종 전체 386개 테스트와 release 경고 0개, 직접 diff 검증 및 수정된 DAG 검증 게이트가 통과했다.
+
+변경 파일: `Sources/Views/Main/BottomStatusBar.swift`, `history.md`

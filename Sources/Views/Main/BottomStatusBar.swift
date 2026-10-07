@@ -186,9 +186,9 @@ struct BottomStatusBar: View {
                 if let fable = usage.fableWeekly {
                     Text("·")
                         .foregroundStyle(.secondary)
+                    Text("Fable")
                     Text(display.qualifiedPercentText(usedPercent: fable.usedPercent))
                         .monospacedDigit()
-                    Text("Fable")
                 }
             case .unavailable:
                 Text("—")
