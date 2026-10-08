@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'none'; frame-src 'none'; object-src 'none'; img-src data: http: https:; font-src 'none'; base-uri 'none'; form-action 'none'">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="editor.css">
+<script src="editor.js" defer></script>
+</head><body><header id="editor-toolbar" aria-label="문서 도구">
+<div id="format-tools" role="toolbar" aria-label="Markdown 서식">
+<button type="button" data-format="heading" title="제목">H</button>
+<button type="button" data-format="bold" title="굵게"><strong>B</strong></button>
+<button type="button" data-format="italic" title="기울임"><em>I</em></button>
+<button type="button" data-format="link" title="링크">링크</button>
+<button type="button" data-format="unorderedList" title="글머리 기호">목록</button>
+<button type="button" data-format="orderedList" title="번호 목록">1.</button>
+<button type="button" data-format="checklist" title="체크리스트">☑</button>
+<button type="button" data-format="quote" title="인용">인용</button>
+<button type="button" data-format="inlineCode" title="인라인 코드">코드</button>
+</div><button id="mode-toggle" type="button">Preview</button>
+</header><main id="editor"></main></body></html>

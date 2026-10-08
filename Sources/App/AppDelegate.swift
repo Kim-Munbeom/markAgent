@@ -32,11 +32,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     init(
         projectStore: ProjectStore,
+        tabs: TabCollection? = nil,
         subscriptionStatus: SubscriptionStatusModel? = nil,
         systemStatus: SystemStatusModel = SystemStatusModel()
     ) {
         let homeURL = URL(fileURLWithPath: NSHomeDirectory())
-        self.tabs = TabCollection(unscopedRootDirectory: homeURL)
+        self.tabs = tabs ?? TabCollection(unscopedRootDirectory: homeURL)
         self.recentStore = RecentDocumentStore()
         self.snippetStore = PromptSnippetStore()
         self.projectStore = projectStore
@@ -56,7 +57,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.rootHostingView = nil
         self.searchKeyMonitor = nil
         super.init()
-        tabs.dirtyPrompter = dirtyPrompter
+        self.tabs.dirtyPrompter = dirtyPrompter
     }
 
     func applicationWillFinishLaunching(_ notification: Notification) {
@@ -99,6 +100,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         subscriptionStatus.stopPolling()
         Task {
+            guard await confirmCloseAllDirtyMarkdownTabs() else {
+                sender.reply(toApplicationShouldTerminate: false)
+                return
+            }
             await systemStatus.stop()
             sender.reply(toApplicationShouldTerminate: true)
         }
@@ -420,7 +425,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         toggleModeItem.target = self
         viewMenu.addItem(toggleModeItem)
 
-        let rawViewItem = NSMenuItem(title: String(localized: "Raw Edit"), action: #selector(showRawView), keyEquivalent: "r")
+        let rawViewItem = NSMenuItem(title: String(localized: "Edit"), action: #selector(showRawView), keyEquivalent: "r")
         rawViewItem.keyEquivalentModifierMask = [.command, .control]
         rawViewItem.target = self
         viewMenu.addItem(rawViewItem)
@@ -801,13 +806,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func saveDocument() {
-        _ = saveActiveMarkdownDocument()
+        guard let markdownTab = tabs.activeMarkdownTab else { return }
+        Task {
+            await markdownTab.state.document.withEditorSnapshot {
+                _ = self.saveMarkdownDocument(markdownTab)
+            }
+        }
     }
 
     @discardableResult
-    private func saveActiveMarkdownDocument() -> Bool {
-        guard let markdownTab = tabs.activeMarkdownTab else { return false }
-
+    private func saveMarkdownDocument(_ markdownTab: MarkdownTab) -> Bool {
         let document = markdownTab.state.document
         let wasDirty = document.isDirty
         let currentFileURL = markdownTab.state.fileURL
@@ -872,14 +880,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func toggleViewMode() {
         guard let markdownTab = tabs.activeMarkdownTab else { return }
-        markdownTab.state.document.viewMode = .preview
-        updateViewMenuState()
+        Task {
+            await markdownTab.state.document.withEditorSnapshot {
+                markdownTab.state.document.viewMode = .preview
+                self.updateViewMenuState()
+            }
+        }
     }
 
     @objc private func showRawView() {
         guard let markdownTab = tabs.activeMarkdownTab else { return }
-        markdownTab.state.document.viewMode = .rawEdit
-        updateViewMenuState()
+        Task {
+            await markdownTab.state.document.withEditorSnapshot {
+                markdownTab.state.document.viewMode = .rawEdit
+                self.updateViewMenuState()
+            }
+        }
     }
 
     @objc private func toggleDiff() {
@@ -1117,7 +1133,7 @@ extension AppDelegate: NSWindowDelegate {
 
     func windowShouldClose(_ sender: NSWindow) -> Bool {
         if isClosingAfterDirtyConfirmation { return true }
-        guard tabs.allTabs.contains(where: { $0 is MarkdownTab && $0.isDirty }) else { return true }
+        guard tabs.allTabs.contains(where: { $0 is MarkdownTab }) else { return true }
 
         Task { [weak self, weak sender] in
             guard let self, let sender else { return }

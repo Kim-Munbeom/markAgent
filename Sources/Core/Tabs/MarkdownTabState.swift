@@ -56,6 +56,14 @@ final class MarkdownTabState {
     }
 
     func prepareForClose(prompt: DirtyDocumentPrompting?) async -> Bool {
+        var result = false
+        let flushed = await document.withEditorSnapshot {
+            result = await self.prepareSnapshotForClose(prompt: prompt)
+        }
+        return flushed && result
+    }
+
+    private func prepareSnapshotForClose(prompt: DirtyDocumentPrompting?) async -> Bool {
         if isDirty {
             guard let prompt = prompt else { return false }
             let confirmed = await prompt.confirmCloseDirtyDocument(title: title, fileURL: fileURL) { url in

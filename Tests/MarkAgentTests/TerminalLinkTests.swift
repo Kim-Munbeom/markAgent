@@ -68,13 +68,13 @@ final class TerminalLinkTests: XCTestCase {
         let state = TerminalTabState(workingDirectory: FileManager.default.temporaryDirectory, userConfigProvider: { nil })
         let reports = LinkMouseReports()
         let released = expectation(description: "TUI 마우스 release 보고")
-        released.expectedFulfillmentCount = 3
+        released.expectedFulfillmentCount = 1
         let session = InMemoryTerminalSession(write: {
             let report = String(decoding: $0, as: UTF8.self)
             reports.append(report)
-            // 첫 클릭 두 번과 드래그의 release만 이 단계에서 기다린다.
+            // host 소유 클릭은 보고하지 않고 드래그 release만 기다린다.
             if report.hasPrefix("\u{1B}[<"), report.hasSuffix("m"),
-               reports.values.filter({ $0.hasPrefix("\u{1B}[<") && $0.hasSuffix("m") }).count <= 3 {
+               reports.values.filter({ $0.hasPrefix("\u{1B}[<") && $0.hasSuffix("m") }).count == 1 {
                 released.fulfill()
             }
         }, resize: { _ in })
@@ -123,6 +123,7 @@ final class TerminalLinkTests: XCTestCase {
         coordinator.onTitle = nil
         XCTAssertTrue(view.isMouseCaptured)
         let metrics = try XCTUnwrap(coordinator.metrics)
+        var openedURLs: [String] = []
         for (row, link) in links.enumerated() {
             let url = link.0
             let point = view.convert(NSPoint(x: CGFloat(metrics.cellWidthPixels) / window.backingScaleFactor / 2,
@@ -145,6 +146,7 @@ final class TerminalLinkTests: XCTestCase {
             XCTAssertEqual(NSCursor.current, NSCursor.pointingHand)
             let opened = expectation(description: "TUI PR 링크 열기")
             coordinator.openExternalURL = {
+                openedURLs.append($0.absoluteString)
                 XCTAssertEqual($0.absoluteString, url)
                 opened.fulfill()
             }
@@ -158,6 +160,13 @@ final class TerminalLinkTests: XCTestCase {
                 else { view.mouseUp(with: event) }
             }
             await fulfillment(of: [opened], timeout: 5)
+            let completed = expectation(description: "host 클릭 뒤 파서 장벽")
+            coordinator.onTitle = { if $0 == "host-click-\(row)" { completed.fulfill() } }
+            session.receive("\u{1B}]2;host-click-\(row)\u{7}")
+            await fulfillment(of: [completed], timeout: 5)
+            coordinator.onTitle = nil
+            XCTAssertEqual(openedURLs, Array(links.prefix(row + 1).map(\.0)))
+            XCTAssertFalse(reports.values.contains { $0.hasPrefix("\u{1B}[<0;") })
         }
         coordinator.openExternalURL = { _ in XCTFail("TUI 드래그는 링크를 열면 안 된다.") }
         let dragY = view.bounds.height - CGFloat(metrics.cellHeightPixels) / window.backingScaleFactor * 1.5
@@ -180,9 +189,14 @@ final class TerminalLinkTests: XCTestCase {
             }
         }
         await fulfillment(of: [released], timeout: 5)
+        let dragCompleted = expectation(description: "드래그 뒤 파서 장벽")
+        coordinator.onTitle = { if $0 == "drag-complete" { dragCompleted.fulfill() } }
+        session.receive("\u{1B}]2;drag-complete\u{7}")
+        await fulfillment(of: [dragCompleted], timeout: 5)
+        coordinator.onTitle = nil
         XCTAssertEqual(reports.values.filter { $0.hasPrefix("\u{1B}[<") }, [
-            "\u{1B}[<35;1;1M", "\u{1B}[<0;1;1M", "\u{1B}[<0;1;1m",
-            "\u{1B}[<35;1;2M", "\u{1B}[<0;1;2M", "\u{1B}[<0;1;2m",
+            "\u{1B}[<35;1;1M",
+            "\u{1B}[<35;1;2M",
             "\u{1B}[<0;1;2M", "\u{1B}[<32;4;2M", "\u{1B}[<0;4;2m",
         ])
 
@@ -288,6 +302,136 @@ final class TerminalLinkTests: XCTestCase {
             eventNumber: 0, clickCount: 0, pressure: 0
         )))
         XCTAssertEqual(NSCursor.current, NSCursor.iBeam, "링크 hover 중 변경된 원래 요청도 복원해야 한다.")
+
+        func event(_ type: NSEvent.EventType, _ point: NSPoint,
+                   _ modifiers: NSEvent.ModifierFlags = [], _ count: Int = 1) throws -> NSEvent {
+            try XCTUnwrap(NSEvent.mouseEvent(
+                with: type, location: point, modifierFlags: modifiers,
+                timestamp: 0, windowNumber: window.windowNumber, context: nil,
+                eventNumber: 0, clickCount: count, pressure: 1
+            ))
+        }
+        func settle(_ title: String, prefix: String = "") async {
+            let completed = expectation(description: title)
+            coordinator.onTitle = { if $0 == title { completed.fulfill() } }
+            session.receive(prefix + "\u{1B}]2;\(title)\u{7}")
+            await fulfillment(of: [completed], timeout: 5)
+            coordinator.onTitle = nil
+        }
+        func hoverLink(_ url: String = links[0].0) async throws {
+            let hovered = expectation(description: "대조 입력 전 실제 링크 조회")
+            coordinator.onHover = {
+                if $0 == url { coordinator.onHover = nil; hovered.fulfill() }
+            }
+            view.mouseMoved(with: try event(.mouseMoved, linkPoint))
+            await fulfillment(of: [hovered], timeout: 5)
+        }
+        func clickFrames(since index: Int) -> [String] {
+            Array(reports.values.dropFirst(index).filter { !$0.hasPrefix("\u{1B}[<35;") })
+        }
+        let cellBlank = view.convert(NSPoint(
+            x: CGFloat(metrics.cellWidthPixels) / window.backingScaleFactor * 19.5,
+            y: view.bounds.height - CGFloat(metrics.cellHeightPixels) / window.backingScaleFactor * 2.5
+        ), to: nil)
+        coordinator.openExternalURL = { _ in XCTFail("대조 입력은 host 링크를 열면 안 된다.") }
+        view.mouseMoved(with: try event(.mouseMoved, cellBlank))
+        var baseline = reports.values.count
+        view.mouseDown(with: try event(.leftMouseDown, cellBlank))
+        view.mouseUp(with: try event(.leftMouseUp, cellBlank))
+        await settle("blank-click-complete")
+        XCTAssertEqual(clickFrames(since: baseline), ["\u{1B}[<0;20;3M", "\u{1B}[<0;20;3m"])
+
+        for (flags, code) in [(NSEvent.ModifierFlags.option, 8), (.control, 16)] {
+            try await hoverLink()
+            baseline = reports.values.count
+            view.mouseDown(with: try event(.leftMouseDown, linkPoint, flags))
+            view.mouseUp(with: try event(.leftMouseUp, linkPoint, flags))
+            await settle("modifier-\(code)-complete")
+            XCTAssertEqual(clickFrames(since: baseline), ["\u{1B}[<\(code);1;1M", "\u{1B}[<\(code);1;1m"])
+        }
+        try await hoverLink()
+        baseline = reports.values.count
+        view.mouseDown(with: try event(.leftMouseDown, linkPoint))
+        view.mouseUp(with: try event(.leftMouseUp, cellBlank))
+        await settle("cancel-position-complete")
+        XCTAssertEqual(clickFrames(since: baseline), ["\u{1B}[<0;1;1M", "\u{1B}[<32;20;3M", "\u{1B}[<0;20;3m"])
+
+        try await hoverLink()
+        baseline = reports.values.count
+        view.mouseDown(with: try event(.leftMouseDown, linkPoint))
+        view.mouseUp(with: try event(.leftMouseUp, linkPoint, .option))
+        await settle("cancel-modifier-complete")
+        XCTAssertEqual(clickFrames(since: baseline), ["\u{1B}[<0;1;1M", "\u{1B}[<8;1;1m"])
+
+        try await hoverLink()
+        baseline = reports.values.count
+        view.mouseDown(with: try event(.leftMouseDown, linkPoint))
+        view.mouseExited(with: try XCTUnwrap(NSEvent.enterExitEvent(
+            with: .mouseExited, location: cellBlank, modifierFlags: [], timestamp: 0,
+            windowNumber: window.windowNumber, context: nil, eventNumber: 0, trackingNumber: 0, userData: nil
+        )))
+        view.mouseDragged(with: try event(.leftMouseDragged, cellBlank))
+        view.mouseDragged(with: try event(.leftMouseDragged, linkPoint))
+        view.mouseUp(with: try event(.leftMouseUp, linkPoint))
+        await settle("exit-drag-complete")
+        XCTAssertEqual(clickFrames(since: baseline), [
+            "\u{1B}[<0;1;1M", "\u{1B}[<32;20;3M", "\u{1B}[<32;1;1M", "\u{1B}[<0;1;1m",
+        ])
+
+        try await hoverLink()
+        var comparisonOpens: [String] = []
+        coordinator.openExternalURL = { comparisonOpens.append($0.absoluteString) }
+        baseline = reports.values.count
+        for count in [1, 2] {
+            view.mouseDown(with: try event(.leftMouseDown, linkPoint, [], count))
+            view.mouseUp(with: try event(.leftMouseUp, linkPoint, [], count))
+        }
+        await settle("double-click-complete")
+        XCTAssertEqual(comparisonOpens, [links[0].0])
+        XCTAssertEqual(clickFrames(since: baseline), ["\u{1B}[<0;1;1M", "\u{1B}[<0;1;1m"])
+
+        // 캡처 모드가 바뀌어도 down 때 선택한 host 소유권을 유지한다.
+        try await hoverLink()
+        baseline = reports.values.count
+        view.mouseDown(with: try event(.leftMouseDown, linkPoint))
+        await settle("capture-off-pending", prefix: "\u{1B}[?1000l\u{1B}[?1002l\u{1B}[?1003l")
+        view.mouseUp(with: try event(.leftMouseUp, linkPoint))
+        await settle("capture-change-click-complete")
+        XCTAssertEqual(comparisonOpens.count, 2)
+        XCTAssertEqual(clickFrames(since: baseline), [])
+        XCTAssertFalse(view.isMouseCaptured)
+        for flags in [NSEvent.ModifierFlags(), .command] {
+            try await hoverLink()
+            baseline = reports.values.count
+            view.mouseDown(with: try event(.leftMouseDown, linkPoint, flags))
+            view.mouseUp(with: try event(.leftMouseUp, linkPoint, flags))
+            await settle("capture-off-\(flags.rawValue)-complete")
+            XCTAssertEqual(clickFrames(since: baseline), [])
+        }
+        XCTAssertEqual(comparisonOpens, Array(repeating: links[0].0, count: 4))
+
+        await settle("local-captured-ready", prefix: "\u{1B}[?1000h\u{1B}[?1003h\u{1B}[H\u{1B}[2J"
+            + "\u{1B}]8;;docs/plan.md\u{1B}\\local\u{1B}]8;;\u{1B}\\")
+        try await hoverLink("docs/plan.md")
+        var localFiles: [URL] = []
+        coordinator.onOpenFile = { localFiles.append($0) }
+        baseline = reports.values.count
+        view.mouseDown(with: try event(.leftMouseDown, linkPoint))
+        view.mouseUp(with: try event(.leftMouseUp, linkPoint))
+        await settle("local-captured-click-complete")
+        XCTAssertEqual(localFiles, [state.workingDirectory.appendingPathComponent("docs/plan.md")])
+        XCTAssertEqual(comparisonOpens.count, 4)
+        XCTAssertEqual(clickFrames(since: baseline), [])
+
+        try await hoverLink("docs/plan.md")
+        baseline = reports.values.count
+        view.mouseDown(with: try event(.leftMouseDown, linkPoint))
+        view.isActiveTerminal = { false }
+        view.mouseUp(with: try event(.leftMouseUp, linkPoint))
+        await settle("inactive-click-complete")
+        XCTAssertEqual(localFiles.count, 1)
+        XCTAssertEqual(clickFrames(since: baseline), [])
+        view.isActiveTerminal = { true }
     }
 
     @MainActor
@@ -551,13 +695,21 @@ final class TerminalLinkTests: XCTestCase {
 private final class LinkMouseReports: @unchecked Sendable {
     private let lock = NSLock()
     private var reports: [String] = []
+    private var buffer = ""
 
     var values: [String] {
         lock.withLock { reports }
     }
 
     func append(_ report: String) {
-        lock.withLock { reports.append(report) }
+        lock.withLock {
+            buffer += report
+            while let start = buffer.range(of: "\u{1B}[<"),
+                  let end = buffer[start.upperBound...].firstIndex(where: { $0 == "M" || $0 == "m" }) {
+                reports.append(String(buffer[start.lowerBound...end]))
+                buffer.removeSubrange(...end)
+            }
+        }
     }
 }
 

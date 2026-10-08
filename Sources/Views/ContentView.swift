@@ -47,7 +47,7 @@ struct ContentView: View {
 
             ToolbarItemGroup(placement: .automatic) {
                     modeButton(.preview, title: String(localized: "Preview"), systemImage: "eye", shortcut: "1")
-                    modeButton(.rawEdit, title: String(localized: "Raw Edit"), systemImage: "square.and.pencil", shortcut: "2")
+                    modeButton(.rawEdit, title: String(localized: "Edit"), systemImage: "square.and.pencil", shortcut: "2")
             }
 
             ToolbarItem(placement: .automatic) {
@@ -69,10 +69,12 @@ struct ContentView: View {
             "파일이 외부에서 수정되었습니다",
             isPresented: Binding(
                 get: { document.isExternalUpdatePending },
-                set: { if !$0 { document.rejectExternalUpdate() } }
+                set: { document.isExternalUpdatePending = $0 }
             )
         ) {
-            Button("외부 변경 로드") { document.acceptExternalUpdate() }
+            Button("외부 변경 로드") {
+                Task { await document.withEditorSnapshot { document.acceptExternalUpdate() } }
+            }
             Button("내 변경 유지") { document.rejectExternalUpdate() }
             Button("취소", role: .cancel) { document.rejectExternalUpdate() }
         } message: {
@@ -90,23 +92,13 @@ struct ContentView: View {
         } else if !document.isLoaded {
             loadingView
         } else {
-            switch document.viewMode {
-            case .preview:
-                if document.editableContent.isEmpty {
-                    emptyDocumentView
-                } else if document.showDiff, let diffResult = document.diffResult {
-                    DiffOverlayView(diffResult: diffResult, baseURL: documentImageBaseURL) {
-                        document.showDiff = false
-                    }
-                } else {
-                    previewContent
+            if document.viewMode == .preview,
+               document.showDiff, let diffResult = document.diffResult {
+                DiffOverlayView(diffResult: diffResult, baseURL: documentImageBaseURL) {
+                    document.showDiff = false
                 }
-            case .rawEdit:
-                EditorView(
-                    document: document,
-                    showsInlineToolbar: true,
-                    rendersMarkdownStyle: false
-                )
+            } else {
+                editingContent
             }
         }
     }
@@ -120,7 +112,7 @@ struct ContentView: View {
         let isSelected = document.viewMode == mode
 
         return Button {
-            document.viewMode = mode
+            Task { await document.withEditorSnapshot { document.viewMode = mode } }
         } label: {
             Label(title, systemImage: systemImage)
                 .foregroundStyle(isSelected ? (appColors?.accent ?? Color.accentColor) : (appColors?.foreground ?? Color.primary))
@@ -129,13 +121,19 @@ struct ContentView: View {
         .keyboardShortcut(shortcut, modifiers: .command)
     }
 
-    private var previewContent: some View {
-        ScrollView {
-            MarkdownPreviewView(content: document.editableContent, baseURL: documentImageBaseURL)
-                .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(20)
-        }
+    private var editingContent: some View {
+        EditorView(
+            document: document,
+            showsInlineToolbar: true,
+            rendersMarkdownStyle: document.viewMode == .preview,
+            onToggleViewMode: {
+                Task {
+                    await document.withEditorSnapshot {
+                        document.viewMode = document.viewMode == .preview ? .rawEdit : .preview
+                    }
+                }
+            }
+        )
     }
 
     private var documentImageBaseURL: URL? {
