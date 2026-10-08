@@ -81,6 +81,7 @@
 81. [세션 77: Claude OAuth 사용량과 상태바 표시 개선](#세션-77-claude-oauth-사용량과-상태바-표시-개선)
 82. [세션 78: 기존 Swift 경고 수정과 Fable 표시 순서 보정](#세션-78-기존-swift-경고-수정과-fable-표시-순서-보정)
 83. [세션 79: herdr 작업 경로와 파일 열기 연동](#세션-79-herdr-작업-경로와-파일-열기-연동)
+84. [세션 80: 터미널 마우스 휠 스크롤과 링크 중복 열기 수정](#세션-80-터미널-마우스-휠-스크롤과-링크-중복-열기-수정)
 
 ---
 
@@ -199,6 +200,8 @@
 | 109 | 하단 Fable 이름과 비율 순서 보정 | Fable을 비율 앞으로 이동하고 used/remaining·밝은/어두운 모드·좁은 폭의 기존 실제 렌더 검증 통과 |
 | 110 | 경고 수정 및 Fable 순서 v26.10.07.1 재릴리스 준비 | 사용자 선택에 따라 기존 v26.10.07을 보존하고 두 버전 필드에 .1 예외를 적용해 dev/main 병합·공증 배포 준비 |
 | 111 | herdr 작업 경로와 파일 열기 연동 | 터미널별 PID·TTY 등록과 실제 세션 소켓으로 활성 pane pwd 추적, A/B·cd·종료 복원·파일 열기 및 누수 전후 동일 확인 |
+| 112 | TUI 마우스 휠 스크롤 수정 | 링크 조회용 Shift+Command가 휠 보고에 섞이던 원인을 실제 Ghostty 테스트로 재현하고 휠 직전 실제 수정키 복원, 전체 414개 테스트·leaks 확인 |
+| 113 | TUI 링크 클릭 중복 열기 수정 | 마우스 캡처 중 링크 클릭을 TUI에 전달하지 않아 MarkAgent만 한 번 열도록 수정, 통합 테스트 갱신·전체 414개 테스트·사용자 실제 확인 |
 
 ---
 
@@ -4077,3 +4080,34 @@ space/pane 추적은 herdr 세션 API에 특화하고, cwd 소비 경로는 기�
 원격 dev `aebf95f`, main `db14c2e`와 중복 PR이 없음을 확인했다. 사용자 요청에 따라 기능 브랜치를 dev PR로 병합하고 dev의 main PR을 이어서 병합한다. GitHub CI workflow가 없어 merge 전 검증은 고정 후보의 로컬 전체 테스트·release 빌드·native 앱 QA·gate review를 기준으로 한다. 최종 main의 서명·공증과 게시 산출물 검증은 별도로 수행한다.
 
 변경 파일: `history.md`
+
+---
+
+## 세션 80: 터미널 마우스 휠 스크롤과 링크 중복 열기 수정
+
+> 날짜: 2026-10-08
+> 경로: ~/SideProjects/markAgent
+
+터미널에서 Claude Code 사용 시 마우스 휠 스크롤이 대부분 반응하지 않는 문제와, 하이퍼링크 한 번 클릭에 창이 두 개 열리는 문제를 원인 확인 후 수정했다.
+
+### 대화 1: 마우스 휠 스크롤 미반응
+
+**사용자:**
+> 터미널로 클로드 코드 사용 시 터치패드는 잘 되지만 마우스 휠은 작동이 잘 안됩니다. (Ghostty.app은 정상, 클릭 후 휠을 돌리면 작동)
+
+**응답:**
+번들 libghostty와 Ghostty.app이 같은 엔진이고 `scrollWheel` 전달도 동일함을 확인했다. 원인은 `SearchAwareTerminalView.mouseMoved`가 TUI 마우스 캡처 중 링크 탐지를 위해 Shift+Command를 붙인 위치 이벤트를 보내고, 엔진이 마지막 위치 이벤트의 수정키를 휠 보고에 그대로 사용해 휠이 Shift+휠(`ESC[<69`)로 전달되던 것이다. 클릭은 실제 수정키로 갱신해 일시적으로 동작했다. 휠 직전에 위치를 무효화하고 실제 수정키의 이동 이벤트를 보내 엔진 수정키를 복원하도록 했다(같은 좌표의 수정키 변경은 엔진이 무시). 실제 Ghostty 통합 테스트가 수정 전 `69` 보고로 실패하고 수정 후 `65`로 통과했으며, 전체 414개 테스트와 QA 앱 leaks(기존 linkd XPC root만)를 확인했다. 사용자가 실제 휠 동작을 확인했다.
+
+변경 파일: `Sources/Views/Tabs/SearchAwareTerminalView.swift`, `Tests/MarkAgentTests/TerminalLinkTests.swift`
+
+---
+
+### 대화 2: 링크 한 번 클릭에 창 두 개
+
+**사용자:**
+> PR 하이퍼링크를 한 번 클릭하면 2개의 창이 뜹니다. 고스티에서는 한번만 열림. (A: MarkAgent가 열기로 진행, 클릭/드래그 구분은 제외)
+
+**응답:**
+Ghostty.app에서 일반 클릭으로 열린 1개는 Claude Code가 클릭 보고를 받아 직접 연 것이므로, MarkAgent의 일반 클릭 열기와 합쳐 두 번 열렸다. 사용자 선택(A)에 따라 마우스 캡처 중 링크 위 클릭은 TUI에 press/release를 보내지 않고 MarkAgent만 열도록 했다. 링크 위에서 시작한 클릭·드래그가 TUI에 전달되지 않는 단점은 사용자가 수용했다. 기존 TUI 링크 통합 테스트의 기대값을 새 동작으로 갱신해 수정 전 실패·수정 후 통과를 확인했고, 전체 414개 테스트와 leaks(기존 linkd XPC root만), 사용자 실제 확인을 마쳤다.
+
+변경 파일: `Sources/Views/Tabs/SearchAwareTerminalView.swift`, `Tests/MarkAgentTests/TerminalLinkTests.swift`, `history.md`

@@ -68,13 +68,12 @@ final class TerminalLinkTests: XCTestCase {
         let state = TerminalTabState(workingDirectory: FileManager.default.temporaryDirectory, userConfigProvider: { nil })
         let reports = LinkMouseReports()
         let released = expectation(description: "TUI 마우스 release 보고")
-        released.expectedFulfillmentCount = 3
         let session = InMemoryTerminalSession(write: {
             let report = String(decoding: $0, as: UTF8.self)
             reports.append(report)
-            // 첫 클릭 두 번과 드래그의 release만 이 단계에서 기다린다.
+            // 링크 클릭은 TUI에 보내지 않으므로 이후 빈 칸 클릭의 첫 release만 이 단계에서 기다린다.
             if report.hasPrefix("\u{1B}[<"), report.hasSuffix("m"),
-               reports.values.filter({ $0.hasPrefix("\u{1B}[<") && $0.hasSuffix("m") }).count <= 3 {
+               reports.values.filter({ $0.hasPrefix("\u{1B}[<") && $0.hasSuffix("m") }).count == 1 {
                 released.fulfill()
             }
         }, resize: { _ in })
@@ -179,11 +178,27 @@ final class TerminalLinkTests: XCTestCase {
             default: view.mouseUp(with: event)
             }
         }
+        let blankRowPoint = view.convert(NSPoint(
+            x: CGFloat(metrics.cellWidthPixels) / window.backingScaleFactor * 10.5,
+            y: view.bounds.height - CGFloat(metrics.cellHeightPixels) / window.backingScaleFactor * 2.5
+        ), to: nil)
+        for type in [NSEvent.EventType.mouseMoved, .leftMouseDown, .leftMouseUp] {
+            let event = try XCTUnwrap(NSEvent.mouseEvent(
+                with: type, location: blankRowPoint, modifierFlags: [],
+                timestamp: 0, windowNumber: window.windowNumber,
+                context: nil, eventNumber: 0, clickCount: 1, pressure: 1
+            ))
+            switch type {
+            case .mouseMoved: view.mouseMoved(with: event)
+            case .leftMouseDown: view.mouseDown(with: event)
+            default: view.mouseUp(with: event)
+            }
+        }
         await fulfillment(of: [released], timeout: 5)
+        // TUI도 링크를 직접 열 수 있으므로 링크 위 press/release는 TUI에 보내지 않아 중복 열기를 막는다.
         XCTAssertEqual(reports.values.filter { $0.hasPrefix("\u{1B}[<") }, [
-            "\u{1B}[<35;1;1M", "\u{1B}[<0;1;1M", "\u{1B}[<0;1;1m",
-            "\u{1B}[<35;1;2M", "\u{1B}[<0;1;2M", "\u{1B}[<0;1;2m",
-            "\u{1B}[<0;1;2M", "\u{1B}[<32;4;2M", "\u{1B}[<0;4;2m",
+            "\u{1B}[<35;1;1M", "\u{1B}[<35;1;2M", "\u{1B}[<35;4;2M",
+            "\u{1B}[<35;11;3M", "\u{1B}[<0;11;3M", "\u{1B}[<0;11;3m",
         ])
 
         let linkPoint = view.convert(NSPoint(
@@ -288,6 +303,77 @@ final class TerminalLinkTests: XCTestCase {
             eventNumber: 0, clickCount: 0, pressure: 0
         )))
         XCTAssertEqual(NSCursor.current, NSCursor.iBeam, "링크 hover 중 변경된 원래 요청도 복원해야 한다.")
+    }
+
+    @MainActor
+    func testMouseWheelAfterHoverReportsWithoutLinkLookupModifiers() async throws {
+        _ = NSApplication.shared
+        let state = TerminalTabState(workingDirectory: FileManager.default.temporaryDirectory, userConfigProvider: { nil })
+        let reports = LinkMouseReports()
+        let wheelReported = expectation(description: "TUI 휠 보고")
+        wheelReported.assertForOverFulfill = false
+        let session = InMemoryTerminalSession(write: {
+            let report = String(decoding: $0, as: UTF8.self)
+            reports.append(report)
+            if report.hasPrefix("\u{1B}[<6") { wheelReported.fulfill() }
+        }, resize: { _ in })
+        let coordinator = LinkSignalCoordinator()
+        coordinator.observeState(state)
+        let window = MarkAgentWindow(contentRect: NSRect(x: 0, y: 0, width: 640, height: 160),
+                                     styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        let view = SearchAwareTerminalView(frame: NSRect(x: 0, y: 0, width: 640, height: 160))
+        let viewportReady = expectation(description: "테스트 창 viewport 크기 적용")
+        coordinator.onResize = {
+            if $0.widthPixels == UInt32(view.bounds.width * window.backingScaleFactor),
+               $0.heightPixels == UInt32(view.bounds.height * window.backingScaleFactor) {
+                coordinator.onResize = nil
+                viewportReady.fulfill()
+            }
+        }
+        view.configuration = TerminalSurfaceOptions(backend: .inMemory(session))
+        view.delegate = coordinator
+        state.terminalView = view
+        view.controller = state.terminalViewState.controller
+        window.contentView?.addSubview(view)
+        defer {
+            coordinator.onTitle = nil
+            coordinator.onResize = nil
+            NSCursor.arrow.set()
+            TerminalTabView.tearDown(view, coordinator: coordinator)
+            view.removeFromSuperview()
+            window.close()
+        }
+        await fulfillment(of: [viewportReady], timeout: 5)
+
+        let parsed = expectation(description: "TUI 마우스 모드 파싱")
+        coordinator.onTitle = { if $0 == "tui-wheel-ready" { parsed.fulfill() } }
+        session.receive("\u{1B}[?1000h\u{1B}[?1006h\u{1B}]2;tui-wheel-ready\u{7}")
+        await fulfillment(of: [parsed], timeout: 5)
+        XCTAssertTrue(view.isMouseCaptured)
+
+        let point = view.convert(NSPoint(x: 4, y: view.bounds.height - 4), to: nil)
+        view.mouseMoved(with: try XCTUnwrap(NSEvent.mouseEvent(
+            with: .mouseMoved, location: point, modifierFlags: [],
+            timestamp: 0, windowNumber: window.windowNumber,
+            context: nil, eventNumber: 0, clickCount: 0, pressure: 0
+        )))
+        // 일반 마우스 휠처럼 정밀하지 않은 line 단위 이벤트를 만든다.
+        let cgWheel = try XCTUnwrap(CGEvent(scrollWheelEvent2Source: nil, units: .line,
+                                            wheelCount: 1, wheel1: -1, wheel2: 0, wheel3: 0))
+        // 창이 없는 합성 이벤트의 locationInWindow는 화면 좌표이므로, 실제 휠 이벤트처럼 창 좌표가 되게 맞춘다.
+        let primaryScreenHeight = try XCTUnwrap(NSScreen.screens.first).frame.maxY
+        cgWheel.location = CGPoint(x: point.x, y: primaryScreenHeight - point.y)
+        let wheel = try XCTUnwrap(NSEvent(cgEvent: cgWheel))
+        XCTAssertFalse(wheel.hasPreciseScrollingDeltas)
+        XCTAssertEqual(wheel.locationInWindow, point)
+        view.scrollWheel(with: wheel)
+        await fulfillment(of: [wheelReported], timeout: 5)
+
+        let wheelReports = reports.values.filter { $0.hasPrefix("\u{1B}[<6") }
+        XCTAssertFalse(wheelReports.isEmpty)
+        XCTAssertTrue(wheelReports.allSatisfy { $0.hasPrefix("\u{1B}[<65;") },
+                      "링크 탐지용 Shift가 휠 보고에 섞이면 TUI가 휠을 무시한다: \(wheelReports)")
     }
 
     @MainActor

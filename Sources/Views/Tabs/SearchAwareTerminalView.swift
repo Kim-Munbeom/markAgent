@@ -11,6 +11,7 @@ final class SearchAwareTerminalView: AppTerminalView {
     private(set) var searchBar: TerminalSearchBar?
     private(set) var hoveredLink: String?
     private var pendingLinkClick: String?
+    private var isSuppressingLinkPress = false
     private var isPointerInside = false
     private var requestedCursor = NSCursor.iBeam
     private var isHandlingPointerEvent = false
@@ -25,6 +26,12 @@ final class SearchAwareTerminalView: AppTerminalView {
     override func mouseDown(with event: NSEvent) {
         let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         pendingLinkClick = isActiveTerminal() && modifiers.isEmpty && event.clickCount == 1 ? hoveredLink : nil
+        // Claude Code 같은 TUI도 클릭한 링크를 직접 열기 때문에, 캡처 중 링크 클릭은 TUI에 보내지 않는다.
+        isSuppressingLinkPress = pendingLinkClick != nil && isMouseCaptured
+        guard !isSuppressingLinkPress else {
+            window?.makeFirstResponder(self)
+            return
+        }
         withPointerUpdate { super.mouseDown(with: event) }
     }
 
@@ -36,7 +43,11 @@ final class SearchAwareTerminalView: AppTerminalView {
     override func mouseUp(with event: NSEvent) {
         let url = pendingLinkClick
         pendingLinkClick = nil
-        withPointerUpdate { super.mouseUp(with: event) }
+        if isSuppressingLinkPress {
+            isSuppressingLinkPress = false
+        } else {
+            withPointerUpdate { super.mouseUp(with: event) }
+        }
         guard isActiveTerminal(), event.modifierFlags.intersection(.deviceIndependentFlagsMask).isEmpty,
               let url else { return }
         (delegate as? any TerminalSurfaceOpenURLDelegate)?.terminalDidRequestOpenURL(url, kind: .unknown)
@@ -127,6 +138,21 @@ final class SearchAwareTerminalView: AppTerminalView {
         )
         super.mouseMoved(with: linkEvent ?? event)
         updatePointerCursor()
+    }
+
+    override func scrollWheel(with event: NSEvent) {
+        // 엔진은 마지막 위치 이벤트의 수정키로 휠을 보고하므로 링크 조회용 Shift+Command를 실제 수정키로 되돌린다.
+        if isMouseCaptured, let restoreEvent = NSEvent.mouseEvent(
+            with: .mouseMoved, location: event.locationInWindow,
+            modifierFlags: event.modifierFlags,
+            timestamp: event.timestamp, windowNumber: event.windowNumber,
+            context: nil, eventNumber: 0, clickCount: 0, pressure: 0
+        ) {
+            // 같은 좌표에서 수정키만 바뀐 이벤트는 엔진이 무시하므로 먼저 위치를 무효화한다.
+            invalidateMousePosition()
+            super.mouseMoved(with: restoreEvent)
+        }
+        super.scrollWheel(with: event)
     }
 
     override func mouseExited(with event: NSEvent) {
