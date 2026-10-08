@@ -4106,3 +4106,15 @@ space/pane 추적은 herdr 세션 API에 특화하고, cwd 소비 경로는 기�
 최종 작업트리의 Swift 전체 435개와 Bun 24개 테스트가 통과했다. 호스트와 인접 탭을 유지한 채 닫힌 편집기의 weak session/WK 해제를 먼저 검증하는 관련 2개 테스트도 통과했고 재검토는 PASS였다. `leaks`는 기존 LaunchServices/AppIntents NSXPC root 3개의 416건·19,936바이트를 보고해 0건으로 표현하지 않는다. 소유한 기존 QA PID 38110만 종료했고 사용자 설치 앱 PID 83165는 유지했다. 설계 문서의 과거 CM6 설명을 현재 구현에 맞췄다.
 
 변경 파일: `AGENTS.md`, `DESIGN.md`, `Sources/App/AppDelegate.swift`, `Sources/App/Resources/Editor/`, `Sources/Core/Document.swift`, `Sources/Core/Editor/EditorSession.swift`, `Sources/Core/Tabs/MarkdownTabState.swift`, `Sources/Views/ContentView.swift`, `Sources/Views/EditorView.swift`, `Sources/Views/EditorWebView.swift`, `Sources/Views/Main/ActiveTabContentView.swift`, `Sources/Views/Tabs/MarkdownTabView.swift`, `Tests/MarkAgentTests/EditorBridgeTests.swift`, `Tests/MarkAgentTests/EditorWebViewTests.swift`, `Tests/MarkAgentTests/MarkdownEditingControllerTests.swift`, `Tests/MarkAgentTests/MarkdownModeToggleTests.swift`, `Tests/MarkAgentTests/MarkdownTabLayoutTests.swift`, `Tests/MarkAgentTests/TabCollectionWorkspaceTests.swift`, `history.md`
+
+---
+
+### 대화 2: 터미널 휠과 링크 중복 전달 수정
+
+**사용자:**
+> 요청 요약: 터미널의 스크롤 동작과 링크 클릭 중복 문제를 수정해줘.
+
+**응답:**
+링크 탐지의 합성 수정키 상태를 휠 전에 실제 modifier와 위치로 복원한다. 마우스 캡처 중 링크 클릭의 down을 보류해 정상 up에서 host 열기를 한 번만 실행하고, drag·취소·활성 상태 변경에서는 원래 down을 재전달한다. 실제 Ghostty SGR 프레임의 위치·수정키·개수와 host open/raw 전달 경계를 회귀로 검증했다. 사용 중인 libghostty-spm 1.4.0 `356f730`에는 선택 복사 누수 PR #23 병합 `6505146`이 포함되며 기존 패치를 제거하지 않았다. 전체 Swift 검증과 기존 실제 Claude 스크롤 QA 증거를 함께 보존한다.
+
+변경 파일: `Sources/Views/Tabs/SearchAwareTerminalView.swift`, `Tests/MarkAgentTests/TerminalLinkTests.swift`, `Tests/MarkAgentTests/TerminalScrollIntegrationTests.swift`, `history.md`
