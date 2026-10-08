@@ -10,21 +10,28 @@ struct MarkdownTabView: View {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.terminalAppTheme) private var terminalAppTheme
 
+    var externalUpdateAlertBinding: Binding<Bool> {
+        Binding(
+            get: { isActive && state.document.isExternalUpdatePending },
+            set: { if isActive { state.document.isExternalUpdatePending = $0 } }
+        )
+    }
+
     var body: some View {
         VStack(spacing: 0) {
-            localHeaderToolbar
-            Divider()
             detailContent
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
             .alert(
                 "파일이 외부에서 수정되었습니다",
-                isPresented: Binding(
-                    get: { state.document.isExternalUpdatePending },
-                    set: { if !$0 { state.document.rejectExternalUpdate() } }
-                )
+                isPresented: externalUpdateAlertBinding
             ) {
-                Button("외부 변경 로드") { state.document.acceptExternalUpdate() }
+                Button("외부 변경 로드") {
+                    let document = state.document
+                    Task {
+                        await document.withEditorSnapshot { document.acceptExternalUpdate() }
+                    }
+                }
                 Button("내 변경 유지") { state.document.rejectExternalUpdate() }
                 Button("취소", role: .cancel) { state.document.rejectExternalUpdate() }
             } message: {
@@ -44,20 +51,12 @@ struct MarkdownTabView: View {
         } else if !state.document.isLoaded {
             loadingView
         } else {
-            switch state.document.viewMode {
-            case .preview:
-                if !state.document.supportsPreview {
-                    rawEditor
-                } else if state.document.editableContent.isEmpty {
-                    emptyDocumentView
-                } else if state.document.showDiff, let diffResult = state.document.diffResult {
-                    DiffOverlayView(diffResult: diffResult, baseURL: documentImageBaseURL) {
-                        state.document.showDiff = false
-                    }
-                } else {
-                    previewContent
+            if state.document.viewMode == .preview,
+               state.document.showDiff, let diffResult = state.document.diffResult {
+                DiffOverlayView(diffResult: diffResult, baseURL: documentImageBaseURL) {
+                    state.document.showDiff = false
                 }
-            case .rawEdit:
+            } else {
                 rawEditor
             }
         }
@@ -67,102 +66,20 @@ struct MarkdownTabView: View {
         EditorView(
             document: state.document,
             showsInlineToolbar: false,
-            rendersMarkdownStyle: false,
+            rendersMarkdownStyle: state.document.viewMode == .preview,
             isActive: isActive,
-            externalSelectedRange: $selectedRange
+            externalSelectedRange: $selectedRange,
+            onToggleViewMode: { Task { await toggleViewMode() } }
         )
     }
 
-    private var localHeaderToolbar: some View {
-        // 버튼 행의 고유 폭이 좁은 중앙 영역보다 넓어도 부모 스택을 넓히지 않도록 가로 스크롤로 감싼다.
-        ScrollView(.horizontal, showsIndicators: false) {
-            localHeaderToolbarItems
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-        }
-        .background(appColors?.panel ?? Color(NSColor.controlBackgroundColor))
-    }
-
-    private var localHeaderToolbarItems: some View {
-        HStack(spacing: 12) {
-            HStack(spacing: 6) {
-                if state.document.supportsPreview {
-                    modeButton(.preview, title: String(localized: "Preview"), systemImage: "eye")
-                }
-                    modeButton(.rawEdit, title: String(localized: "Raw Edit"), systemImage: "square.and.pencil")
-            }
-
-            if state.document.supportsPreview {
-                Divider()
-                    .frame(height: 22)
-
-                HStack(spacing: 6) {
-                    editButton("H", help: String(localized: "제목"), action: .heading)
-                    editButton("B", help: String(localized: "굵게"), action: .bold)
-                    editButton("I", help: String(localized: "기울임"), action: .italic)
-                        .italic()
-                    editButton(systemImage: "link", help: String(localized: "링크"), action: .link)
-                    editButton(systemImage: "list.bullet", help: String(localized: "글머리 기호"), action: .unorderedList)
-                    editButton(systemImage: "list.number", help: String(localized: "번호 목록"), action: .orderedList)
-                    editButton(systemImage: "checklist", help: String(localized: "체크리스트"), action: .checklist)
-                    editButton(systemImage: "quote.opening", help: String(localized: "인용"), action: .quote)
-                    editButton(systemImage: "chevron.left.forwardslash.chevron.right", help: String(localized: "인라인 코드"), action: .inlineCode)
-                }
-                .disabled(state.document.viewMode != .rawEdit)
-                .opacity(state.document.viewMode == .rawEdit ? 1 : 0.45)
-            }
-        }
-    }
-
-    private func modeButton(
-        _ mode: ViewMode,
-        title: String,
-        systemImage: String
-    ) -> some View {
-        let isSelected = state.document.viewMode == mode
-
-        return Button {
-            state.document.viewMode = mode
-        } label: {
-            Image(systemName: systemImage)
-                .frame(width: 28, height: 26)
-                .foregroundStyle(isSelected ? (appColors?.accent ?? Color.accentColor) : (appColors?.foreground ?? Color.primary))
-        }
-        .help(String(format: String(localized: "%@ 보기"), title))
-    }
-
-    private func editButton(_ title: String, help: String, action: MarkdownEditAction) -> some View {
-        Button {
-            MarkdownEditingController.apply(action, to: state.document, selectedRange: $selectedRange)
-        } label: {
-            Text(title)
-                .font(.system(size: 13, weight: .semibold))
-                .frame(width: 28, height: 26)
-        }
-        .buttonStyle(.plain)
-        .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
-        .help(help)
-    }
-
-    private func editButton(systemImage: String, help: String, action: MarkdownEditAction) -> some View {
-        Button {
-            MarkdownEditingController.apply(action, to: state.document, selectedRange: $selectedRange)
-        } label: {
-            Image(systemName: systemImage)
-                .font(.system(size: 13, weight: .semibold))
-                .frame(width: 28, height: 26)
-        }
-        .buttonStyle(.plain)
-        .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
-        .help(help)
-    }
-
-    private var previewContent: some View {
-        ScrollView {
-            MarkdownPreviewView(content: state.document.editableContent, baseURL: documentImageBaseURL)
-                .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(20)
+    @MainActor
+    @discardableResult
+    func toggleViewMode() async -> Bool {
+        let document = state.document
+        return await document.withEditorSnapshot {
+            guard document.supportsPreview else { return }
+            document.viewMode = document.viewMode == .preview ? .rawEdit : .preview
         }
     }
 

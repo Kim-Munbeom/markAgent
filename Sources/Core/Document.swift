@@ -24,12 +24,71 @@ final class MarkdownDocument {
     private var pendingExternalContent: String?
     private var lastSaveTime: Date?
     private var diffGeneration = 0
+    @ObservationIgnored var editorSession: EditorSession?
+    // 테스트는 명시적으로 자산 URL을 주입한다. 제품의 source-tree fallback은 없다.
+    @ObservationIgnored var editorAssetURL: URL?
+    @ObservationIgnored var editorDrain: Task<Void, Never>?
+    @ObservationIgnored var editorMount: Task<Void, Never>?
+    @ObservationIgnored var editorFailure: Error?
+    @ObservationIgnored private var editorOperation: Task<Bool, Never>?
+    @ObservationIgnored private var insideEditorSnapshot = false
+
+    /// MAIN의 모드 전환·외부 수락도 이 문서별 직렬 장벽을 사용한다.
+    @discardableResult
+    func withEditorSnapshot(
+        preservingUndo: Bool = false,
+        _ operation: @escaping @MainActor () async throws -> Void
+    ) async -> Bool {
+        let previous = editorOperation
+        let task = Task { @MainActor in
+            _ = await previous?.value
+            let session = self.editorSession
+            do {
+                if let failure = self.editorFailure { throw failure }
+                try await session?.flush()
+                let snapshot = self.editableContent
+                self.insideEditorSnapshot = true
+                defer { self.insideEditorSnapshot = false }
+                try await operation()
+                if self.editableContent != snapshot {
+                    try await session?.apply(
+                        text: self.editableContent,
+                        selection: session?.selection ?? NSRange(location: 0, length: 0),
+                        preservingUndo: preservingUndo
+                    )
+                }
+                try await session?.resume()
+                return true
+            } catch {
+                self.errorMessage = error.localizedDescription
+                try? await session?.resume()
+                return false
+            }
+        }
+        editorOperation = task
+        let result = await task.value
+        return result
+    }
+
+    func drainEditor(_ mountedSession: EditorSession? = nil) {
+        guard let session = mountedSession ?? editorSession, editorSession === session else { return }
+        session.webView?.window?.makeFirstResponder(nil)
+        editorDrain = Task {
+            _ = await withEditorSnapshot {}
+            await session.dispose()
+            if editorSession === session { editorSession = nil }
+        }
+    }
 
     var isDirty: Bool {
         editableContent != content
     }
 
     func load(from url: URL) {
+        if editorSession != nil, !insideEditorSnapshot {
+            Task { await withEditorSnapshot { self.load(from: url) } }
+            return
+        }
         do {
             let newContent = try String(contentsOf: url, encoding: .utf8)
             fileURL = url
@@ -63,6 +122,7 @@ final class MarkdownDocument {
     }
 
     func resetToNewDocument() {
+        editorFailure = nil
         content = ""
         editableContent = ""
         fileURL = nil

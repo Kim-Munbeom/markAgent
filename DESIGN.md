@@ -288,3 +288,27 @@ Keychain item identified by stable service/account names and replaced with `SecI
   expose provider/window names, percentages, and reset descriptions.
 - Reduced-motion users receive no decorative animation; progress transitions communicate only
   refresh or state changes.
+
+## 오프라인 Milkdown 편집기
+
+`EditorWebView`는 `Bundle.main/Editor/index.html`만 로드하며 nonPersistent WebKit 저장소,
+단일 weak message handler, 제한된 file read access와 CSP를 사용한다. 배포 자산은
+`Sources/App/Resources/Editor`의 고정 Bun lock/source/생성 JS/라이선스/SHA256으로 재현한다.
+테스트만 명시적인 자산 URL을 주입하며 제품은 소스 트리 fallback을 사용하지 않는다.
+
+문서 저장 baseline은 `MarkdownDocument`, mounted 편집 순서는 `EditorSession`과 ProseMirror가
+소유한다. `withEditorSnapshot(preservingUndo:_:) async -> Bool`은 문서별 직렬 장벽이다.
+최신 snapshot → host operation → 변경 applied ack → resume 순서로 실행한다.
+메뉴 저장, 모드 전환, 포맷, watcher reload와 dirty close 검사도 이 장벽을 통과한다.
+실패는 기존 `errorMessage`로 표시하며 5초 timeout 뒤 오래된 mirror를 저장하지 않는다.
+
+Edit는 원문 텍스트 스키마, Preview는 읽기 전용 GFM 렌더링이며 두 모드만 제공한다.
+wire selection은 원문 UTF-16 NSRange다. 내부 LF 좌표와 원문의 혼합 CRLF 좌표를
+변환하고 원문 separator metadata를 ProseMirror history의 역변환 step에 포함한다.
+포맷은 최소 교체 transaction 하나, 외부 수락은 epoch 증가와 history reset이다.
+언어와 테마 변경은 표시 구성을 갱신하며 원문 history/caret을 재생성하지 않는다.
+열린 Markdown 탭은 비활성 상태에서도 웹뷰를 유지해 선택·스크롤·undo와 화면을 보존한다.
+비활성 탭은 포커스와 외부 변경 알림을 받지 않는다. 다시 활성화하면 native responder를
+먼저 설정하고 snapshot 잠금 해제 뒤 DOM 포커스를 복원한다.
+탭 닫기와 실제 unmount는 snapshot drain을 거쳐 destroy/handler 제거/delegate 해제/
+stopLoading을 실행하며 다음 mount는 drain 완료를 기다린다.

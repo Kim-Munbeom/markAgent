@@ -81,6 +81,7 @@
 81. [세션 77: Claude OAuth 사용량과 상태바 표시 개선](#세션-77-claude-oauth-사용량과-상태바-표시-개선)
 82. [세션 78: 기존 Swift 경고 수정과 Fable 표시 순서 보정](#세션-78-기존-swift-경고-수정과-fable-표시-순서-보정)
 83. [세션 79: herdr 작업 경로와 파일 열기 연동](#세션-79-herdr-작업-경로와-파일-열기-연동)
+84. [세션 80: Milkdown 편집기와 탭 전환 안정화 및 v26.10.08 릴리즈](#세션-80-milkdown-편집기와-탭-전환-안정화-및-v261008-릴리즈)
 
 ---
 
@@ -199,6 +200,9 @@
 | 109 | 하단 Fable 이름과 비율 순서 보정 | Fable을 비율 앞으로 이동하고 used/remaining·밝은/어두운 모드·좁은 폭의 기존 실제 렌더 검증 통과 |
 | 110 | 경고 수정 및 Fable 순서 v26.10.07.1 재릴리스 준비 | 사용자 선택에 따라 기존 v26.10.07을 보존하고 두 버전 필드에 .1 예외를 적용해 dev/main 병합·공증 배포 준비 |
 | 111 | herdr 작업 경로와 파일 열기 연동 | 터미널별 PID·TTY 등록과 실제 세션 소켓으로 활성 pane pwd 추적, A/B·cd·종료 복원·파일 열기 및 누수 전후 동일 확인 |
+| 112 | Milkdown 두 모드와 탭 전환 안정화 | 오프라인 원문 Edit·읽기 전용 Preview, UTF16·줄끝·undo·저장·중립 복사와 탭 수명 보존, 전체 Swift 435개·Bun 24개 통과 |
+| 113 | 터미널 휠과 링크 중복 전달 수정 | 실제 modifier·위치를 복원하고 캡처 링크의 host open 1회 및 drag 재전달 검증 |
+| 114 | 앱 소유 Caffeinate 표시와 v26.10.08 배포 준비 | 앱 assertion에 On/Off를 맞추고 dev/main PR 병합·서명·공증 배포 준비 |
 
 ---
 
@@ -4077,3 +4081,28 @@ space/pane 추적은 herdr 세션 API에 특화하고, cwd 소비 경로는 기�
 원격 dev `aebf95f`, main `db14c2e`와 중복 PR이 없음을 확인했다. 사용자 요청에 따라 기능 브랜치를 dev PR로 병합하고 dev의 main PR을 이어서 병합한다. GitHub CI workflow가 없어 merge 전 검증은 고정 후보의 로컬 전체 테스트·release 빌드·native 앱 QA·gate review를 기준으로 한다. 최종 main의 서명·공증과 게시 산출물 검증은 별도로 수행한다.
 
 변경 파일: `history.md`
+
+---
+
+## 세션 80: Milkdown 편집기와 탭 전환 안정화 및 v26.10.08 릴리즈
+
+> 날짜: 2026-10-08
+> 경로: ~/workspace/markAgent
+
+사용자가 주 문서 편집기를 Milkdown으로 전환한 뒤 탭 깜빡임 수정과 dev/main PR 병합 및 릴리즈를 요청했다. 관련 기능을 독립 커밋으로 기록하고 기존 앱·릴리즈·미추적 자료를 보존한다.
+
+### 대화 1: Milkdown 두 모드와 탭 수명 보존
+
+**사용자:**
+> 요청 요약: 원문 Edit와 읽기 전용 Preview 두 모드의 Milkdown 편집기, 고정 헤더와 원문 서식 도구 및 기존 편집·복사 기능을 유지해줘.
+> 탭을 바꾸면 번쩍거리는 현상이 있는데?
+> 기존 qa 앱은 종료하고 새 qa 번들을 실행해줘.
+
+**응답:**
+오프라인 Milkdown/ProseMirror 원문 스키마와 읽기 전용 GFM Preview를 구현했다. 원문 줄끝·UTF16 좌표·undo, 줄 번호·언어 강조, IME, 직렬 snapshot 저장/외부 변경/종료와 테마 없는 HTML·일반 텍스트 복사를 실제 WK 회귀 및 앱으로 검증했다. 문서 전체를 Markdown으로 재직렬화하거나 세 번째 서식 편집 모드를 추가하지 않는다.
+
+탭 전환마다 WK 편집기가 새로 생성되는 것을 회귀로 재현했고 실제 영상의 편집 영역 83.83%에서 흰 프레임을 확인했다. 열린 Markdown 뷰를 ID별로 유지하고 비활성 탭의 포커스·알림을 제한했다. 재활성화 시 native responder를 먼저 설정하고 snapshot 잠금 해제 뒤 DOM 포커스를 복원한다. 새 QA PID 42383에서 원문 239개·Preview 240개 영상 샘플의 흰 비율 최고값은 0.0이었다.
+
+최종 작업트리의 Swift 전체 435개와 Bun 24개 테스트가 통과했다. 호스트와 인접 탭을 유지한 채 닫힌 편집기의 weak session/WK 해제를 먼저 검증하는 관련 2개 테스트도 통과했고 재검토는 PASS였다. `leaks`는 기존 LaunchServices/AppIntents NSXPC root 3개의 416건·19,936바이트를 보고해 0건으로 표현하지 않는다. 소유한 기존 QA PID 38110만 종료했고 사용자 설치 앱 PID 83165는 유지했다. 설계 문서의 과거 CM6 설명을 현재 구현에 맞췄다.
+
+변경 파일: `AGENTS.md`, `DESIGN.md`, `Sources/App/AppDelegate.swift`, `Sources/App/Resources/Editor/`, `Sources/Core/Document.swift`, `Sources/Core/Editor/EditorSession.swift`, `Sources/Core/Tabs/MarkdownTabState.swift`, `Sources/Views/ContentView.swift`, `Sources/Views/EditorView.swift`, `Sources/Views/EditorWebView.swift`, `Sources/Views/Main/ActiveTabContentView.swift`, `Sources/Views/Tabs/MarkdownTabView.swift`, `Tests/MarkAgentTests/EditorBridgeTests.swift`, `Tests/MarkAgentTests/EditorWebViewTests.swift`, `Tests/MarkAgentTests/MarkdownEditingControllerTests.swift`, `Tests/MarkAgentTests/MarkdownModeToggleTests.swift`, `Tests/MarkAgentTests/MarkdownTabLayoutTests.swift`, `Tests/MarkAgentTests/TabCollectionWorkspaceTests.swift`, `history.md`
