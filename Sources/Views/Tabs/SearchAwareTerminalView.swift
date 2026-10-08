@@ -10,7 +10,7 @@ final class SearchAwareTerminalView: AppTerminalView {
     private(set) weak var searchState: TerminalSearchState?
     private(set) var searchBar: TerminalSearchBar?
     private(set) var hoveredLink: String?
-    private var pendingLinkClick: String?
+    private var pendingLinkClick: (url: String, down: NSEvent, captured: Bool)?
     private var isPointerInside = false
     private var requestedCursor = NSCursor.iBeam
     private var isHandlingPointerEvent = false
@@ -23,23 +23,62 @@ final class SearchAwareTerminalView: AppTerminalView {
     }
 
     override func mouseDown(with event: NSEvent) {
+        if let pending = pendingLinkClick, pending.captured {
+            pendingLinkClick = nil
+            if isActiveTerminal() {
+                withPointerUpdate { super.mouseDown(with: pending.down) }
+            }
+        }
         let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-        pendingLinkClick = isActiveTerminal() && modifiers.isEmpty && event.clickCount == 1 ? hoveredLink : nil
+        pendingLinkClick = nil
+        if isActiveTerminal(), modifiers.isEmpty, event.clickCount == 1, let url = hoveredLink {
+            pendingLinkClick = (url, event, isMouseCaptured)
+            if isMouseCaptured {
+                window?.makeFirstResponder(self)
+                return
+            }
+        }
         withPointerUpdate { super.mouseDown(with: event) }
     }
 
     override func mouseDragged(with event: NSEvent) {
+        let pending = pendingLinkClick
         pendingLinkClick = nil
-        withPointerUpdate { super.mouseDragged(with: event) }
+        if pending?.captured == true, !isActiveTerminal() { return }
+        withPointerUpdate {
+            if let pending, pending.captured { super.mouseDown(with: pending.down) }
+            super.mouseDragged(with: event)
+        }
     }
 
     override func mouseUp(with event: NSEvent) {
-        let url = pendingLinkClick
+        let pending = pendingLinkClick
         pendingLinkClick = nil
-        withPointerUpdate { super.mouseUp(with: event) }
-        guard isActiveTerminal(), event.modifierFlags.intersection(.deviceIndependentFlagsMask).isEmpty,
-              let url else { return }
-        (delegate as? any TerminalSurfaceOpenURLDelegate)?.terminalDidRequestOpenURL(url, kind: .unknown)
+        if pending?.captured == true, !isActiveTerminal() { return }
+        let opensLink = isActiveTerminal()
+            && event.modifierFlags.intersection(.deviceIndependentFlagsMask).isEmpty
+            && pending?.down.locationInWindow == event.locationInWindow
+            && pending?.url == hoveredLink
+        withPointerUpdate {
+            if let pending, pending.captured {
+                if !opensLink {
+                    super.mouseDown(with: pending.down)
+                    super.mouseUp(with: event)
+                }
+            } else {
+                super.mouseUp(with: event)
+            }
+        }
+        guard opensLink, let pending else { return }
+        (delegate as? any TerminalSurfaceOpenURLDelegate)?.terminalDidRequestOpenURL(pending.url, kind: .unknown)
+    }
+
+    override func scrollWheel(with event: NSEvent) {
+        withPointerUpdate {
+            invalidateMousePosition()
+            super.mouseMoved(with: event)
+            super.scrollWheel(with: event)
+        }
     }
 
     override func rightMouseDown(with event: NSEvent) {
@@ -104,7 +143,6 @@ final class SearchAwareTerminalView: AppTerminalView {
         }
         // 엔진이 빈 칸의 nil 콜백을 보내지 않아도 이전 링크가 클릭되지 않게 한다.
         hoveredLink = nil
-        pendingLinkClick = nil
         // first responder에는 터미널 밖의 이동도 전달되므로 다른 영역의 커서를 덮어쓰지 않는다.
         isPointerInside = bounds.contains(convert(event.locationInWindow, from: nil))
         guard isPointerInside else { return }
@@ -133,7 +171,6 @@ final class SearchAwareTerminalView: AppTerminalView {
         isPointerInside = false
         withPointerUpdate { super.mouseExited(with: event) }
         hoveredLink = nil
-        pendingLinkClick = nil
         NSCursor.arrow.set()
     }
 

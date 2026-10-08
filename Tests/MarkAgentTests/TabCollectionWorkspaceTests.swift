@@ -2,9 +2,9 @@ import XCTest
 @testable import ma
 
 final class TabCollectionWorkspaceTests: XCTestCase {
-    func testInactiveWorkspaceRetainsOnlyTerminalContentMounts() {
+    func testInactiveWorkspaceRetainsTerminalAndMarkdownContentMounts() {
         XCTAssertTrue(TabContentMountPolicy.shouldMount(kind: .terminal, isActive: false))
-        XCTAssertFalse(TabContentMountPolicy.shouldMount(kind: .markdown, isActive: false))
+        XCTAssertTrue(TabContentMountPolicy.shouldMount(kind: .markdown, isActive: false))
         XCTAssertFalse(TabContentMountPolicy.shouldMount(kind: .gitDiff, isActive: false))
         XCTAssertFalse(TabContentMountPolicy.shouldMount(kind: .settings, isActive: false))
         XCTAssertFalse(TabContentMountPolicy.shouldMount(kind: .about, isActive: false))

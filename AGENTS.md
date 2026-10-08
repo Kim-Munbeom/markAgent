@@ -168,7 +168,7 @@ markAgent/
 1. **SPM + .app 번들:** SPM으로 빌드, `scripts/bundle.sh`로 .app 번들 생성. Dock/메뉴/Cmd+Tab 정상 동작에 필수.
 2. **macOS 최소 버전:** macOS 14 (Sonoma) — Observation framework, 최신 SwiftUI API 활용.
 3. **AppKit 윈도우 직접 생성:** SwiftUI `WindowGroup`은 SPM executable에서 윈도우를 자동 생성하지 않아, `NSWindow` + `NSHostingView` 방식 채택.
-4. **렌더링 전략:** `swift-markdown`의 `MarkupVisitor`로 AST를 순회하며 SwiftUI View를 직접 생성. WebView 미사용.
+4. **렌더링 전략:** 주 문서의 Raw Edit/Preview는 오프라인 Milkdown/ProseMirror 웹뷰로 전환한다. Raw Edit는 원문 텍스트 스키마, Preview는 읽기 전용 Markdown 렌더링이며 두 모드만 유지한다. 사이드바 quick-look과 Diff는 기존 `swift-markdown` 기반 SwiftUI 렌더러를 사용한다.
 5. **CLI 자동 재실행:** `main.swift`에서 `.app/Contents/MacOS/` 경로 밖 실행 감지 시 상위 디렉토리에서 `.app` 번들을 찾아 `open` 명령으로 재실행.
 
 ---
