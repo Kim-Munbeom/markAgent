@@ -4130,3 +4130,19 @@ space/pane 추적은 herdr 세션 API에 특화하고, cwd 소비 경로는 기�
 On/Off 라벨·커피잔·점을 앱 소유 assertion으로 함께 결정한다. 외부 assertion이 있을 때 MarkAgent Off 상태를 유지하고 외부 assertion은 종료하지 않는다. 자동화에서 외부 On 중 앱 Off/On/Off를 검사했고 실제 QA의 `pmset` 생성·해제 결과와 전체 Swift 검증을 보존했다.
 
 변경 파일: `Sources/Views/Main/BottomStatusBar.swift`, `Tests/MarkAgentTests/BottomStatusBarLayoutTests.swift`, `history.md`
+
+---
+
+### 대화 4: dev/main PR 병합과 v26.10.08 릴리즈 준비
+
+**사용자:**
+> dev pr 머지, main pr 머지, 릴리즈까지 진행해줘
+
+**응답:**
+열린 PR과 `v26.10.08` 태그가 없음을 확인하고 검증된 변경을 Milkdown `6073929`, 터미널 `6871349`, Caffeinate `2c49d61` 커밋으로 분리했다. 로컬 날짜 기준 `26.10.08`을 두 버전 필드에 동일하게 적용한다. 원격 dev는 `364dcc7`, 이전 배포 main은 `f1b722b`이며 GitHub workflow가 없어 로컬 검증과 단일 최종 gate review를 기준으로 병합한다.
+
+고정 후보의 격리 review 작업 트리에서 전체 테스트·release 빌드 및 단일 게이트를 확인한 뒤 기능 브랜치의 dev PR, 이어서 dev의 main PR을 merge commit으로 병합한다. 병합 main의 격리 릴리즈 작업 트리에서 Developer ID 서명, `markagent` 프로필 공증, stapling과 압축 해제 Gatekeeper 검증을 수행한다. 새 태그·공개 릴리즈·ZIP 게시 후 재다운로드 해시·버전·서명·공증을 확인한다. 사용자 설치 앱과 기존 QA·미추적 자료·릴리즈를 보존한다.
+
+편집기 라이선스 생성물의 불필요한 EOF 빈 줄을 제거했고 Bun 24개가 다시 통과했다. 생성 JS는 최종 QA 번들과 같은 SHA256 `74b8762eb67eb76d6b316a0323752706e1cb9a4787d6de9e957a6fb7adecc62f`다. highlight.js의 문법 문자열 내부 실제 공백은 의미 있는 데이터이므로 `git diff --check` 지적을 없애려고 바꾸지 않는다.
+
+변경 파일: `Sources/App/Info.plist`, `history.md`
