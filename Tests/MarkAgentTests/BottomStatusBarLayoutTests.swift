@@ -5,6 +5,33 @@ import XCTest
 
 @MainActor
 final class BottomStatusBarLayoutTests: XCTestCase {
+    func testCaffeinateToggleReflectsAppOwnershipWhenExternalActivityStaysEnabled() async throws {
+        let suiteName = "BottomStatusBarLayoutTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let subscriptions = SubscriptionStatusModel(defaults: defaults, loaders: [:])
+        let system = SystemStatusModel(operations: SystemStatusModel.Operations(
+            createAssertion: { 1 },
+            releaseAssertion: { _ in },
+            sampleCaffeinateActivity: { true },
+            sampleResidentMemory: { 0 }
+        ))
+        let view = BottomStatusBar(
+            subscriptionStatus: subscriptions,
+            systemStatus: system,
+            onOpenSettings: {}
+        )
+
+        await system.sampleCaffeinateActivity()
+        XCTAssertTrue(system.isCaffeinateEnabled)
+        XCTAssertFalse(view.isCaffeinateToggleOn)
+        await system.setCaffeinateEnabled(true)
+        XCTAssertTrue(view.isCaffeinateToggleOn)
+        await system.setCaffeinateEnabled(false)
+        XCTAssertTrue(system.isCaffeinateEnabled)
+        XCTAssertFalse(view.isCaffeinateToggleOn)
+    }
+
     func testUsageViewsFitWithFableAndMissingResetInBothDisplayModes() async throws {
         _ = NSApplication.shared
         XCTAssertNotNil(NSImage(systemSymbolName: "cup.and.saucer.fill", accessibilityDescription: nil))

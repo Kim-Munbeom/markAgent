@@ -60,14 +60,14 @@ struct BottomStatusBar: View {
             } label: {
                 HStack(spacing: 4) {
                     Image(
-                        systemName: systemStatus.isCaffeinateEnabled
+                        systemName: isCaffeinateToggleOn
                             ? "cup.and.saucer.fill"
                             : "cup.and.saucer"
                     )
                     Text(caffeinateStatusText)
                     Circle()
                         .fill(
-                            systemStatus.isCaffeinateEnabled
+                            isCaffeinateToggleOn
                                 ? (appColors?.accent ?? Color.accentColor)
                                 : Color.secondary.opacity(0.5)
                         )
@@ -233,9 +233,12 @@ struct BottomStatusBar: View {
         )
     }
 
-    /// 라벨은 소유 주체와 무관하게 절전 방지가 켜져 있는지만 보여준다. 소유 구분은 도움말이 맡는다.
+    var isCaffeinateToggleOn: Bool {
+        systemStatus.isCaffeinateOwnedByApp
+    }
+
     private var caffeinateStatusText: String {
-        systemStatus.isCaffeinateEnabled ? "On" : "Off"
+        isCaffeinateToggleOn ? "On" : "Off"
     }
 
     private var caffeinateHelpText: String {

@@ -4118,3 +4118,15 @@ space/pane 추적은 herdr 세션 API에 특화하고, cwd 소비 경로는 기�
 링크 탐지의 합성 수정키 상태를 휠 전에 실제 modifier와 위치로 복원한다. 마우스 캡처 중 링크 클릭의 down을 보류해 정상 up에서 host 열기를 한 번만 실행하고, drag·취소·활성 상태 변경에서는 원래 down을 재전달한다. 실제 Ghostty SGR 프레임의 위치·수정키·개수와 host open/raw 전달 경계를 회귀로 검증했다. 사용 중인 libghostty-spm 1.4.0 `356f730`에는 선택 복사 누수 PR #23 병합 `6505146`이 포함되며 기존 패치를 제거하지 않았다. 전체 Swift 검증과 기존 실제 Claude 스크롤 QA 증거를 함께 보존한다.
 
 변경 파일: `Sources/Views/Tabs/SearchAwareTerminalView.swift`, `Tests/MarkAgentTests/TerminalLinkTests.swift`, `Tests/MarkAgentTests/TerminalScrollIntegrationTests.swift`, `history.md`
+
+---
+
+### 대화 3: Caffeinate On/Off의 앱 소유권 표시
+
+**사용자:**
+> 요청 요약: 다른 프로세스의 절전 방지와 MarkAgent의 토글 상태를 구분해줘.
+
+**응답:**
+On/Off 라벨·커피잔·점을 앱 소유 assertion으로 함께 결정한다. 외부 assertion이 있을 때 MarkAgent Off 상태를 유지하고 외부 assertion은 종료하지 않는다. 자동화에서 외부 On 중 앱 Off/On/Off를 검사했고 실제 QA의 `pmset` 생성·해제 결과와 전체 Swift 검증을 보존했다.
+
+변경 파일: `Sources/Views/Main/BottomStatusBar.swift`, `Tests/MarkAgentTests/BottomStatusBarLayoutTests.swift`, `history.md`
