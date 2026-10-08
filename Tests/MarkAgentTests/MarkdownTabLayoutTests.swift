@@ -36,8 +36,8 @@ final class MarkdownTabLayoutTests: XCTestCase {
         hosting?.layoutSubtreeIfNeeded()
         await document.editorMount?.value
         try await XCTUnwrap(document.editorSession).waitUntilReady()
-        weak var originalSession = document.editorSession
-        weak var originalWebView = document.editorSession?.webView
+        weak let originalSession = document.editorSession
+        weak let originalWebView = document.editorSession?.webView
         let released = expectation(description: "닫힌 탭의 WKWebView 해제")
         try XCTUnwrap(originalWebView as? EditorWKWebView).onRelease = { released.fulfill() }
         window.makeFirstResponder(originalWebView)

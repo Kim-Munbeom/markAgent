@@ -4146,3 +4146,12 @@ On/Off 라벨·커피잔·점을 앱 소유 assertion으로 함께 결정한다.
 편집기 라이선스 생성물의 불필요한 EOF 빈 줄을 제거했고 Bun 24개가 다시 통과했다. 생성 JS는 최종 QA 번들과 같은 SHA256 `74b8762eb67eb76d6b316a0323752706e1cb9a4787d6de9e957a6fb7adecc62f`다. highlight.js의 문법 문자열 내부 실제 공백은 의미 있는 데이터이므로 `git diff --check` 지적을 없애려고 바꾸지 않는다.
 
 변경 파일: `Sources/App/Info.plist`, `history.md`
+
+---
+
+### 대화 5: 고정 후보의 컴파일 경고 보정
+
+**응답:**
+격리된 고정 후보 빌드에서 새 수명 회귀의 변경하지 않는 weak 변수 두 개에 SDK 경고가 발생했다. 인접 테스트의 weak 상수 패턴으로 보정하며 해제 관찰 의미는 유지한다. 복제한 Xcode 빌드 캐시가 원래 작업트리의 절대 경로를 가리키는 stale 경고도 확인해 다음 후보는 새 scratch 경로에서 검증한다. 생성 파일을 숨기거나 경고를 억제하지 않는다.
+
+변경 파일: `Tests/MarkAgentTests/MarkdownTabLayoutTests.swift`, `history.md`
