@@ -205,6 +205,7 @@
 | 113 | 터미널 휠과 링크 중복 전달 수정 | 실제 modifier·위치를 복원하고 캡처 링크의 host open 1회 및 drag 재전달 검증 |
 | 114 | 앱 소유 Caffeinate 표시와 v26.10.08 배포 준비 | 앱 assertion에 On/Off를 맞추고 dev/main PR 병합·서명·공증 배포 준비 |
 | 115 | 터미널 Command 클릭 회귀 | 합성 hover 제거, 실제 클릭 직후 수정키 복원, 일반 클릭·선택 보존과 전체 435개 및 보강한 11개 테스트 통과 |
+| 116 | v26.10.12 릴리즈 준비 | 로컬 날짜 버전을 두 필드에 적용하고 dev/main PR 병합과 서명·공증 ZIP 배포 진행 |
 
 ---
 
@@ -4185,3 +4186,17 @@ Swift 전체 435개 테스트가 통과했고 보강한 링크·스크롤 11개 
 `leaks 59665`는 기존 macOS `com.apple.linkd.autoShortcut` NSXPC 순환 참조 3개에 연결된 415건·19,888바이트를 보고했다. 0 leaks로 표현하지 않는다. libghostty-spm 1.4.0 `356f730bec03281fc7b83666a129b0246137ea26`에는 선택 복사 누수 PR #23 병합 `65051461aadfa6ab46a239d0de701763279d83af`이 포함되어 있으며 의존성이나 기존 패치를 제거하지 않았다. 직접 생성한 QA 앱만 종료했고 사용자 설치 앱 PID 82425와 기존 미추적 자료를 보존했다.
 
 변경 파일: `Sources/Views/Tabs/SearchAwareTerminalView.swift`, `scripts/patches/AppTerminalView+MouseCapture.swift`, `Tests/MarkAgentTests/TerminalLinkTests.swift`, `Tests/MarkAgentTests/TerminalScrollIntegrationTests.swift`, `history.md`
+
+---
+
+### 대화 2: dev/main PR 병합과 v26.10.12 릴리즈 준비
+
+**사용자:**
+> dev pr 머지, main pr 머지, 릴리즈까지 진행해줘
+
+**응답:**
+열린 PR과 `v26.10.12` 릴리즈가 없음을 확인했다. 원격 dev는 `7292282`, main은 `cfde82f`이며 파일 내용은 동일하다. 검증된 터미널 변경을 `26584ec`에 기록하고 로컬 날짜 `26.10.12`를 두 앱 버전 필드에 동일하게 적용한다. 관련 없는 미추적 문서와 기존 릴리즈 ZIP은 포함하지 않는다.
+
+GitHub CI workflow가 없으므로 고정 후보의 격리된 review 작업 트리에서 전체 Swift 테스트·release 빌드와 단일 최종 게이트를 확인한다. 기능 브랜치를 dev로, dev를 main으로 순서대로 merge commit 방식으로 병합한다. 최종 main에서 Developer ID 서명, `markagent` 프로필 공증, stapling과 ZIP 압축 해제 Gatekeeper 검증을 수행하고 공개 릴리즈 게시 후 다운로드 자산의 해시·버전·서명·공증 상태를 확인한다. 사용자 설치 앱을 교체하거나 종료하지 않는다.
+
+변경 파일: `Sources/App/Info.plist`, `history.md`
