@@ -83,6 +83,7 @@
 83. [세션 79: herdr 작업 경로와 파일 열기 연동](#세션-79-herdr-작업-경로와-파일-열기-연동)
 84. [세션 80: Milkdown 편집기와 탭 전환 안정화 및 v26.10.08 릴리즈](#세션-80-milkdown-편집기와-탭-전환-안정화-및-v261008-릴리즈)
 85. [세션 81: 터미널 Command 클릭 회귀와 v26.10.12 릴리즈](#세션-81-터미널-command-클릭-회귀와-v261012-릴리즈)
+86. [세션 82: 일반 hover 밑줄 복원과 후속 릴리즈](#세션-82-일반-hover-밑줄-복원과-후속-릴리즈)
 
 ---
 
@@ -206,6 +207,7 @@
 | 114 | 앱 소유 Caffeinate 표시와 v26.10.08 배포 준비 | 앱 assertion에 On/Off를 맞추고 dev/main PR 병합·서명·공증 배포 준비 |
 | 115 | 터미널 Command 클릭 회귀 | 합성 hover 제거, 실제 클릭 직후 수정키 복원, 일반 클릭·선택 보존과 전체 435개 및 보강한 11개 테스트 통과 |
 | 116 | v26.10.12 릴리즈 준비 | 로컬 날짜 버전을 두 필드에 적용하고 dev/main PR 병합과 서명·공증 ZIP 배포 진행 |
+| 117 | 일반 hover 밑줄 복원 | 실제 링크 셀에만 밑줄 표시, 수정키·TUI 보고·선택 보존, 실제 해제 ABI 적용과 전체 435개 테스트 통과 |
 
 ---
 
@@ -4200,3 +4202,26 @@ Swift 전체 435개 테스트가 통과했고 보강한 링크·스크롤 11개 
 GitHub CI workflow가 없으므로 고정 후보의 격리된 review 작업 트리에서 전체 Swift 테스트·release 빌드와 단일 최종 게이트를 확인한다. 기능 브랜치를 dev로, dev를 main으로 순서대로 merge commit 방식으로 병합한다. 최종 main에서 Developer ID 서명, `markagent` 프로필 공증, stapling과 ZIP 압축 해제 Gatekeeper 검증을 수행하고 공개 릴리즈 게시 후 다운로드 자산의 해시·버전·서명·공증 상태를 확인한다. 사용자 설치 앱을 교체하거나 종료하지 않는다.
 
 변경 파일: `Sources/App/Info.plist`, `history.md`
+
+---
+
+## 세션 82: 일반 hover 밑줄 복원과 후속 릴리즈
+
+> 날짜: 2026-10-12
+> 경로: ~/workspace/markAgent
+
+Command 클릭 회귀 이후 사라진 일반 hover 밑줄을 복원하고 검증된 변경의 dev/main PR 병합과 후속 릴리즈를 진행한다. 기존 릴리즈와 설치 앱은 보존한다.
+
+### 대화 1: 일반 hover의 실제 텍스트 밑줄 복원
+
+**사용자:**
+> hover 해도 밑줄이 아예 안나오는데? 클릭이야 cmd+클릭으로 하면 되는데, 밑줄 자체가 안나오는건 문제 아냐?
+
+**응답:**
+Ghostty 링크 조회와 밑줄 표시를 분리해 실제 텍스트 셀 범위에만 CAShapeLayer 밑줄을 표시한다. 실제 baseline·padding과 셀 읽기로 우측 공백을 제거하며 CJK 폭과 내부 공백을 보존한다. 조회 직후 실제 좌표·수정키를 복원하고 UNKNOWN 예약 슬롯으로 TUI에 가상 이동 보고가 전달되지 않도록 한다. 사용자가 꺼 둔 마우스 보고 설정은 변경하지 않는다.
+
+SDK 1.4.0의 헤더와 실제 `ghostty_surface_free_text` 바이너리 인자가 다름을 실행 함수의 첫 인자 읽기로 확인했다. 새 hover 읽기는 실제 text-only C ABI로 호출하여 버퍼 누수를 제거했다. 최종 전체 Swift 435개 테스트와 debug 번들이 통과했고 실제 소유 QA 앱에서 파일명에만 밑줄 표시, 일반 드래그 선택 `target.md`, Command 클릭 문서 열기를 확인했다. Hover 20회 전후와 선택·복사·클릭 후 누수는 기존 시스템 NSXPC/AppIntents 기준선 416건·19,936바이트로 같았으며 새 텍스트 버퍼 누수는 없었다.
+
+libghostty-spm 1.4.0 `356f730bec03281fc7b83666a129b0246137ea26`에 선택 복사 PR #23 병합 `65051461aadfa6ab46a239d0de701763279d83af`이 포함됨을 확인했다. 의존성·기존 패치는 유지하며 설치 앱 PID 69921과 기존 미추적 자료를 보존했다.
+
+변경 파일: `Sources/Views/Tabs/SearchAwareTerminalView.swift`, `scripts/patches/AppTerminalView+MouseCapture.swift`, `Tests/MarkAgentTests/TerminalLinkTests.swift`, `history.md`

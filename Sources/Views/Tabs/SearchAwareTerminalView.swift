@@ -10,6 +10,8 @@ final class SearchAwareTerminalView: AppTerminalView {
     private(set) weak var searchState: TerminalSearchState?
     private(set) var searchBar: TerminalSearchBar?
     private(set) var hoveredLink: String?
+    private var detectedLink: String?
+    private let hoverUnderline = CAShapeLayer()
     private var pendingLinkClick: (url: String, down: NSEvent, captured: Bool)?
     private var isPointerInside = false
     private var requestedCursor = NSCursor.iBeam
@@ -23,6 +25,7 @@ final class SearchAwareTerminalView: AppTerminalView {
     }
 
     override func mouseDown(with event: NSEvent) {
+        clearHover()
         if let pending = pendingLinkClick, pending.captured {
             pendingLinkClick = nil
             if isActiveTerminal() {
@@ -41,6 +44,7 @@ final class SearchAwareTerminalView: AppTerminalView {
     }
 
     override func mouseDragged(with event: NSEvent) {
+        clearHover()
         let pending = pendingLinkClick
         pendingLinkClick = nil
         if pending?.captured == true, !isActiveTerminal() { return }
@@ -73,6 +77,7 @@ final class SearchAwareTerminalView: AppTerminalView {
     }
 
     override func scrollWheel(with event: NSEvent) {
+        clearHover()
         withPointerUpdate {
             invalidateMousePosition()
             super.mouseMoved(with: event)
@@ -105,12 +110,22 @@ final class SearchAwareTerminalView: AppTerminalView {
     }
 
     func updateHoverLink(_ url: String?) {
+        detectedLink = url
+        guard !isHandlingPointerEvent else { return }
         guard isActiveTerminal(), isPointerInside else {
-            hoveredLink = nil
+            clearHover()
             return
         }
         hoveredLink = url
+        if url == nil { hoverUnderline.path = nil }
         updatePointerCursor()
+    }
+
+    private func probeLink(at point: NSPoint, modifiers: NSEvent.ModifierFlags) -> String? {
+        detectedLink = nil
+        invalidateMousePosition(modifiers: modifiers)
+        updateMousePosition(at: point, modifiers: modifiers)
+        return detectedLink
     }
 
     private func commandClickLink(with event: NSEvent) -> String? {
@@ -119,14 +134,11 @@ final class SearchAwareTerminalView: AppTerminalView {
         guard isPointerInside else { return nil }
         var url: String?
         withPointerUpdate {
-            hoveredLink = nil
-            invalidateMousePosition(modifiers: event.modifierFlags)
             var modifiers = event.modifierFlags
             if isMouseCaptured { modifiers.insert(.shift) }
             // TUI 캡처 우회는 실제 Command 클릭 동안만 수행한다.
             // NSEvent를 합성하지 않고, 동기 콜백의 URL을 저장한 뒤 실제 수정키를 복원한다.
-            updateMousePosition(at: point, modifiers: modifiers)
-            url = hoveredLink
+            url = probeLink(at: point, modifiers: modifiers)
             invalidateMousePosition(modifiers: event.modifierFlags)
             super.mouseMoved(with: event)
         }
@@ -148,35 +160,80 @@ final class SearchAwareTerminalView: AppTerminalView {
 
     override func mouseEntered(with event: NSEvent) {
         isPointerInside = true
-        withPointerUpdate { super.mouseEntered(with: event) }
-        updatePointerCursor()
+        refreshHover(with: event)
     }
 
     override func mouseMoved(with event: NSEvent) {
-        let previous = isHandlingPointerEvent
-        isHandlingPointerEvent = true
-        defer { isHandlingPointerEvent = previous }
         // 상위 뷰의 드래그 처리도 이 메서드를 호출하므로 선택 중에는 수정키를 바꾸지 않는다.
         guard event.type == .mouseMoved else {
-            super.mouseMoved(with: event)
+            withPointerUpdate { super.mouseMoved(with: event) }
             return
         }
-        // 엔진이 빈 칸의 nil 콜백을 보내지 않아도 이전 링크가 클릭되지 않게 한다.
-        hoveredLink = nil
+        refreshHover(with: event)
+    }
+
+    private func refreshHover(with event: NSEvent) {
+        clearHover()
         // first responder에는 터미널 밖의 이동도 전달되므로 다른 영역의 커서를 덮어쓰지 않는다.
-        isPointerInside = bounds.contains(convert(event.locationInWindow, from: nil))
-        guard isPointerInside else { return }
-        // 실제 수정키만 전달한다. 자동 hover가 Command+Shift 상태를 남기면 안 된다.
-        invalidateMousePosition()
-        super.mouseMoved(with: event)
+        let point = convert(event.locationInWindow, from: nil)
+        isPointerInside = bounds.contains(point)
+        guard isActiveTerminal(), isPointerInside else { return }
+        var link: String?
+        var rectangles: [NSRect] = []
+        withPointerUpdate {
+            let captured = isMouseCaptured
+            var modifiers = event.modifierFlags.union(.command)
+            if captured { modifiers.insert(.shift) }
+            var querying = false
+            defer {
+                // 조회 성공·실패와 무관하게 실제 좌표·수정키를 복원한다.
+                if querying {
+                    invalidateMousePosition(modifiers: modifiers)
+                    setHoverQueryActive(false, modifiers: modifiers)
+                }
+                invalidateMousePosition(modifiers: event.modifierFlags)
+                super.mouseMoved(with: event)
+            }
+            // 실제 이동을 먼저 보고하여 같은 셀의 URL 조회가 별도 이동으로 기록되지 않게 한다.
+            super.mouseMoved(with: event)
+            guard let url = probeLink(at: point, modifiers: modifiers) else { return }
+            if captured {
+                setHoverQueryActive(true, modifiers: modifiers)
+                querying = true
+            }
+            rectangles = hoverLinkRects(at: point) { candidate in
+                probeLink(at: candidate, modifiers: modifiers) == url
+            }
+            if !rectangles.isEmpty { link = url }
+        }
+        hoveredLink = link
+        if !rectangles.isEmpty {
+            let path = CGMutablePath()
+            rectangles.forEach { path.addRect($0) }
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            hoverUnderline.frame = bounds
+            hoverUnderline.contentsScale = window?.backingScaleFactor ?? 1
+            effectiveAppearance.performAsCurrentDrawingAppearance {
+                hoverUnderline.fillColor = NSColor.linkColor.cgColor
+            }
+            hoverUnderline.path = path
+            if hoverUnderline.superlayer == nil { layer?.addSublayer(hoverUnderline) }
+            CATransaction.commit()
+        }
         updatePointerCursor()
+    }
+
+    private func clearHover() {
+        hoveredLink = nil
+        hoverUnderline.path = nil
     }
 
     override func mouseExited(with event: NSEvent) {
         isPointerInside = false
         withPointerUpdate { super.mouseExited(with: event) }
         invalidateMousePosition(modifiers: event.modifierFlags)
-        hoveredLink = nil
+        clearHover()
         NSCursor.arrow.set()
     }
 
@@ -208,6 +265,7 @@ final class SearchAwareTerminalView: AppTerminalView {
 
     override func layout() {
         super.layout()
+        if hoverUnderline.frame != bounds { clearHover() }
         layoutSearchBar()
     }
 
@@ -234,7 +292,8 @@ final class SearchAwareTerminalView: AppTerminalView {
 
     func disconnectSearch() {
         isPointerInside = false
-        hoveredLink = nil
+        clearHover()
+        hoverUnderline.removeFromSuperlayer()
         pendingLinkClick = nil
         searchState?.disconnect()
         searchState = nil
@@ -279,6 +338,7 @@ final class SearchAwareTerminalView: AppTerminalView {
     }
 
     override func keyDown(with event: NSEvent) {
+        clearHover()
         if handleTerminalSearchShortcut(event) { return }
         if handleSnippetShortcut(event) {
             return
