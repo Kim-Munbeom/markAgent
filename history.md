@@ -84,6 +84,7 @@
 84. [세션 80: Milkdown 편집기와 탭 전환 안정화 및 v26.10.08 릴리즈](#세션-80-milkdown-편집기와-탭-전환-안정화-및-v261008-릴리즈)
 85. [세션 81: 터미널 Command 클릭 회귀와 v26.10.12 릴리즈](#세션-81-터미널-command-클릭-회귀와-v261012-릴리즈)
 86. [세션 82: 일반 hover 밑줄 복원과 후속 릴리즈](#세션-82-일반-hover-밑줄-복원과-후속-릴리즈)
+87. [세션 83: release hover 크래시 수정과 재배포](#세션-83-release-hover-크래시-수정과-재배포)
 
 ---
 
@@ -209,6 +210,7 @@
 | 116 | v26.10.12 릴리즈 준비 | 로컬 날짜 버전을 두 필드에 적용하고 dev/main PR 병합과 서명·공증 ZIP 배포 진행 |
 | 117 | 일반 hover 밑줄 복원 | 실제 링크 셀에만 밑줄 표시, 수정키·TUI 보고·선택 보존, 실제 해제 ABI 적용과 전체 435개 테스트 통과 |
 | 118 | v26.10.12.1 후속 릴리즈 준비 | 사용자 선택으로 날짜 뒤 .1 예외 적용, 기존 릴리즈 보존과 dev/main 병합·서명·공증 배포 진행 |
+| 119 | release hover 크래시 수정 | 최적화된 잘못된 C 호출을 직접 호출로 수정, 수정 전 signal11·수정 후 release 435개와 debug 11개 통과 |
 
 ---
 
@@ -4239,5 +4241,44 @@ libghostty-spm 1.4.0 `356f730bec03281fc7b83666a129b0246137ea26`에 선택 복사
 기존 `v26.10.12`가 게시되어 있어 새 버전을 확인했고, 사용자 선택에 따라 같은 날짜 뒤 `.1` 예외를 적용하여 두 앱 버전 필드를 `26.10.12.1`로 맞춘다. 기존 태그와 자산은 덮어쓰지 않는다. 기능 커밋 `d9540bb`를 dev 대상 PR #83에 반영했으며 잠금 격리 후보의 release 빌드와 단일 최종 게이트가 통과했다.
 
 버전·히스토리 커밋을 추가한 뒤 기능 PR을 dev로, dev PR을 main으로 순서대로 merge commit 병합한다. 최종 main의 동일한 파일 트리에서 Developer ID 서명, `markagent` 프로필 공증, stapling·압축 해제 검증을 수행하고 새 릴리즈 게시 후 다운로드 자산 해시·버전·서명·공증을 확인한다. 설치 앱과 관련 없는 미추적 자료는 유지한다.
+
+변경 파일: `Sources/App/Info.plist`, `history.md`
+
+---
+
+## 세션 83: release hover 크래시 수정과 재배포
+
+> 날짜: 2026-10-12
+> 경로: ~/workspace/markAgent
+
+배포 v26.10.12.1의 일반 마우스 이동 SIGSEGV를 release 최적화 경로에서 재현한다. debug 앱 검증만으로 배포의 실제 입력 동작을 확인했다고 판단한 검증 누락을 바로잡는다.
+
+### 대화 1: 최적화된 텍스트 해제 호출 수정
+
+**사용자:**
+> 실행하고 마우스를 움직이니 크래시나는데?
+> 또 크래시 났네
+
+**응답:**
+설치 앱의 ma-2026-10-12-135825.ips에서 `ghostty_surface_free_text`와 `hoverLinkRects+1296` 호출을 확인했다. 실제 바이너리는 text를 x0에서 읽지만 최적화된 캐스트 호출은 x1에만 주소를 넣고 x0에 Swift String 값 `0x3000000000000015`를 남겼다. LLVM IR도 `free_text(undef, text)`이며 잘못된 접근 주소 `0x300000000000002d`가 크래시와 일치했다.
+
+다른 시그니처로의 unsafeBitCast를 제거하고 선언된 두 인자 C 함수를 직접 호출하면서 같은 text 주소를 두 인자에 전달한다. 고정 SDK 1.4.0의 실제 ABI가 읽는 x0를 debug와 release 모두 유지한다. SDK 버전과 기존 패치는 변경하지 않는다.
+
+수정 전 기존 실제 Ghostty hover 회귀를 release로 실행하면 signal11로 종료됐다. 수정 후 `swift test -c release` 전체 435개와 debug 링크·휠 11개는 모두 통과했고 진단 경고는 없었다. 별도 실제 release QA 앱 PID 94031에서 native mouseMoved 100회가 종료 없이 완료됐으며 밑줄은 81pt 파일명 범위였다. 일반 선택·복사 결과 `target.md`와 Command 클릭 후 문서 탭 및 `# Hover click succeeded` 본문을 확인했다.
+
+프로세스 누수는 전 405건·19,536바이트, debugger 평가·hover·선택·복사·문서 열기 후 409건·19,648바이트였다. 기존 NSXPC/AppIntents 순환 참조 외에 CFString 48바이트가 보고되므로 기준선이 완전히 같거나 0 leaks라고 표현하지 않는다. 새 hover 텍스트 버퍼 ROOT LEAK는 없었으며 이 CFString의 귀속은 확인하지 못했다.
+
+추가 크래시 로그는 소유 QA 디버거의 타임아웃 종료 중 SIGTRAP이었다. debug 앱 재검증으로 대체하지 않고 디버거 없는 실제 release 앱을 직접 실행한 뒤 소유 PID의 native 이벤트를 검증했다. 사용자 설치 앱과 클립보드는 보존한다.
+
+변경 파일: `scripts/patches/AppTerminalView+MouseCapture.swift`, `history.md`
+
+### 대화 2: 검증 후 dev/main 병합과 새 릴리즈
+
+**사용자:**
+> 수정이 끝나면 dev pr 머지, main pr 머지, 릴리즈 다시해줘.
+> 릴리즈 버전: 26.10.12.2 (Recommended)
+
+**응답:**
+사용자가 지정한 새 버전 `26.10.12.2`로 두 앱 버전 필드를 맞추고 기존 태그·자산을 보존한다. 검증된 수정과 히스토리만 커밋하여 dev PR, dev→main PR 순서로 병합하고 최종 main의 Developer ID 서명·공증·ZIP 다운로드 검증을 수행한다. 사용자 설치 앱은 교체하지 않는다.
 
 변경 파일: `Sources/App/Info.plist`, `history.md`
