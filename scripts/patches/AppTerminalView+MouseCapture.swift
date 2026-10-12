@@ -40,15 +40,12 @@ extension AppTerminalView {
         let columns = Int(size.columns)
         let rows = Int(size.rows)
         guard columns > 0, rows > 0 else { return [] }
-        // 1.4.0 헤더는 surface 인자를 선언하지만 고정 바이너리의 free_text는
-        // text 포인터 하나를 받는다. 실제 C ABI로 호출해야 읽기 버퍼가 해제된다.
-        let declaredFree: @convention(c) (
-            UnsafeMutableRawPointer?, UnsafeMutablePointer<ghostty_text_s>?
-        ) -> Void = ghostty_surface_free_text
-        let freeText = unsafeBitCast(
-            declaredFree,
-            to: (@convention(c) (UnsafeMutablePointer<ghostty_text_s>?) -> Void).self
-        )
+        // 고정 1.4.0 바이너리는 헤더의 두 번째 인자 대신 첫 번째 인자를 text로 읽는다.
+        // 다른 시그니처로 캐스트하면 release 최적화가 첫 인자를 undef로 낮추므로
+        // 선언된 C 호출을 유지하면서 실제 ABI가 읽는 첫 인자에도 text를 전달한다.
+        func freeText(_ text: UnsafeMutablePointer<ghostty_text_s>) {
+            ghostty_surface_free_text(UnsafeMutableRawPointer(text), text)
+        }
         var word = ghostty_text_s()
         guard ghostty_surface_quicklook_word(surface, &word) else { return [] }
         defer { freeText(&word) }
