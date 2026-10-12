@@ -110,14 +110,15 @@ final class TerminalLinkTests: XCTestCase {
         await fulfillment(of: [viewportReady], timeout: 5)
 
         let links = [
-            ("https://github.com/comento/comento-admin-laravel/pull/4207", "Laravel #4207"),
-            ("https://github.com/comento/comento-admin-vue/pull/1423", "Vue #1423"),
+            ("https://github.com/comento/comento-admin-laravel/pull/4207", "Laravel #4207", 13),
+            ("https://github.com/comento/comento-admin-vue/pull/1423", "Vue #1423", 9),
+            ("https://example.com/hover", "한 글", 5),
         ]
         let parsed = expectation(description: "TUI 링크와 마우스 모드 파싱")
         coordinator.onTitle = { if $0 == "tui-link-ready" { parsed.fulfill() } }
         session.receive("\u{1B}[?1000h\u{1B}[?1002h\u{1B}[?1003h\u{1B}[?1006h"
                         + "\u{1B}]22;crosshair\u{7}"
-                        + links.map { "\u{1B}]8;;\($0.0)\u{1B}\\\($0.1)\u{1B}]8;;\u{1B}\\" }.joined(separator: "\r\n")
+                        + links.map { "\u{1B}]8;;\($0.0)\u{1B}\\\($0.1)\u{1B}[K\u{1B}]8;;\u{1B}\\" }.joined(separator: "\r\n")
                         + "\u{1B}]2;tui-link-ready\u{7}")
         await fulfillment(of: [parsed], timeout: 5)
         coordinator.onTitle = nil
@@ -126,17 +127,21 @@ final class TerminalLinkTests: XCTestCase {
         var openedURLs: [String] = []
         for (row, link) in links.enumerated() {
             let url = link.0
-            let point = view.convert(NSPoint(x: CGFloat(metrics.cellWidthPixels) / window.backingScaleFactor / 2,
+            let point = view.convert(NSPoint(x: CGFloat(metrics.cellWidthPixels) / window.backingScaleFactor * (row == 2 ? 2.5 : 0.5),
                                             y: view.bounds.height - CGFloat(metrics.cellHeightPixels) / window.backingScaleFactor * (CGFloat(row) + 0.5)), to: nil)
-            coordinator.onHover = { if $0 != nil { XCTFail("일반 hover는 링크 수정키를 합성하면 안 된다.") } }
             let hover = try XCTUnwrap(NSEvent.mouseEvent(
                 with: .mouseMoved, location: point, modifierFlags: [],
                 timestamp: 0, windowNumber: window.windowNumber,
                 context: nil, eventNumber: 0, clickCount: 0, pressure: 0
             ))
             view.mouseMoved(with: hover)
-            XCTAssertNil(view.hoveredLink)
-            XCTAssertEqual(NSCursor.current, NSCursor.crosshair)
+            XCTAssertEqual(view.hoveredLink, url)
+            XCTAssertEqual(NSCursor.current, NSCursor.pointingHand)
+            let underline = try XCTUnwrap(view.layer?.sublayers?.compactMap { $0 as? CAShapeLayer }.first)
+            let underlineBounds = try XCTUnwrap(underline.path?.boundingBox)
+            XCTAssertEqual(underlineBounds.width,
+                           CGFloat(link.2) * CGFloat(metrics.cellWidthPixels) / window.backingScaleFactor,
+                           accuracy: 1 / window.backingScaleFactor)
             coordinator.onHover = nil
             let opened = expectation(description: "TUI PR 링크 열기")
             coordinator.openExternalURL = {
@@ -191,6 +196,8 @@ final class TerminalLinkTests: XCTestCase {
         XCTAssertEqual(reports.values.filter { $0.hasPrefix("\u{1B}[<") }, [
             "\u{1B}[<35;1;1M",
             "\u{1B}[<35;1;2M",
+            "\u{1B}[<35;3;3M",
+            "\u{1B}[<35;1;2M",
             "\u{1B}[<0;1;2M", "\u{1B}[<32;4;2M", "\u{1B}[<0;4;2m",
         ])
 
@@ -198,7 +205,6 @@ final class TerminalLinkTests: XCTestCase {
             x: CGFloat(metrics.cellWidthPixels) / window.backingScaleFactor / 2,
             y: view.bounds.height - CGFloat(metrics.cellHeightPixels) / window.backingScaleFactor / 2
         ), to: nil)
-        coordinator.onHover = { if $0 != nil { XCTFail("반복 hover도 수정키를 합성하면 안 된다.") } }
         for _ in 0..<2 {
             view.mouseMoved(with: try XCTUnwrap(NSEvent.mouseEvent(
                 with: .mouseMoved, location: linkPoint, modifierFlags: [],
@@ -206,7 +212,7 @@ final class TerminalLinkTests: XCTestCase {
                 eventNumber: 0, clickCount: 0, pressure: 0
             )))
         }
-        XCTAssertNil(view.hoveredLink)
+        XCTAssertEqual(view.hoveredLink, links[0].0)
         coordinator.onHover = nil
         coordinator.openExternalURL = { _ in XCTFail("링크 밖 클릭은 마지막 호버 링크를 열면 안 된다.") }
         let blankPoint = view.convert(NSPoint(x: 400, y: 80), to: nil)
@@ -283,7 +289,7 @@ final class TerminalLinkTests: XCTestCase {
         )))
         session.receive("\u{1B}]22;text\u{7}")
         await fulfillment(of: [requested], timeout: 5)
-        XCTAssertEqual(NSCursor.current, NSCursor.iBeam)
+        XCTAssertEqual(NSCursor.current, NSCursor.pointingHand)
         view.mouseMoved(with: try XCTUnwrap(NSEvent.mouseEvent(
             with: .mouseMoved, location: blankPoint, modifierFlags: [],
             timestamp: 0, windowNumber: window.windowNumber, context: nil,
@@ -306,9 +312,9 @@ final class TerminalLinkTests: XCTestCase {
             await fulfillment(of: [completed], timeout: 5)
             coordinator.onTitle = nil
         }
-        func hoverLink() throws {
+        func hoverLink(_ url: String = links[0].0) throws {
             view.mouseMoved(with: try event(.mouseMoved, linkPoint))
-            XCTAssertNil(view.hoveredLink)
+            XCTAssertEqual(view.hoveredLink, url)
         }
         func clickFrames(since index: Int) -> [String] {
             Array(reports.values.dropFirst(index).filter { !$0.hasPrefix("\u{1B}[<35;") })
@@ -416,7 +422,7 @@ final class TerminalLinkTests: XCTestCase {
 
         await settle("local-captured-ready", prefix: "\u{1B}[?1000h\u{1B}[?1003h\u{1B}[H\u{1B}[2J"
             + "\u{1B}]8;;docs/plan.md\u{1B}\\local\u{1B}]8;;\u{1B}\\")
-        try hoverLink()
+        try hoverLink("docs/plan.md")
         var localFiles: [URL] = []
         coordinator.onOpenFile = { localFiles.append($0) }
         baseline = reports.values.count
@@ -442,7 +448,7 @@ final class TerminalLinkTests: XCTestCase {
         await settle("command-click-modifiers-restored")
         XCTAssertEqual(Array(reports.values.dropFirst(baseline)), ["\u{1B}[<64;1;1M"])
 
-        try hoverLink()
+        try hoverLink("docs/plan.md")
         baseline = reports.values.count
         view.mouseDown(with: try event(.leftMouseDown, linkPoint, .command))
         view.isActiveTerminal = { false }
@@ -451,6 +457,13 @@ final class TerminalLinkTests: XCTestCase {
         XCTAssertEqual(localFiles.count, 1)
         XCTAssertEqual(clickFrames(since: baseline), [])
         view.isActiveTerminal = { true }
+
+        XCTAssertTrue(view.performBindingAction("toggle_mouse_reporting"))
+        let disabledBaseline = reports.values.count
+        try hoverLink("docs/plan.md")
+        await settle("disabled-reporting-hover-complete")
+        XCTAssertEqual(reports.values.count, disabledBaseline, "이미 꺼 둔 마우스 보고도 hover가 켜면 안 된다.")
+        XCTAssertTrue(view.performBindingAction("toggle_mouse_reporting"))
     }
 
     @MainActor
@@ -644,9 +657,9 @@ final class TerminalLinkTests: XCTestCase {
                                                    timestamp: 0, windowNumber: window.windowNumber,
                                                    context: nil, eventNumber: 0, clickCount: 0, pressure: 0))
         let hovered = expectation(description: "실제 Command로 링크 hover 인식")
-        hovered.expectedFulfillmentCount = 2
         coordinator.onHover = { url in
             if url == "docs/plan.md" {
+                coordinator.onHover = nil
                 hovered.fulfill()
             }
         }
