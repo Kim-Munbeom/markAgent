@@ -128,22 +128,16 @@ final class TerminalLinkTests: XCTestCase {
             let url = link.0
             let point = view.convert(NSPoint(x: CGFloat(metrics.cellWidthPixels) / window.backingScaleFactor / 2,
                                             y: view.bounds.height - CGFloat(metrics.cellHeightPixels) / window.backingScaleFactor * (CGFloat(row) + 0.5)), to: nil)
-            let hovered = expectation(description: "TUI 링크 hover")
-            coordinator.onHover = {
-                if $0 == url {
-                    coordinator.onHover = nil
-                    hovered.fulfill()
-                }
-            }
+            coordinator.onHover = { if $0 != nil { XCTFail("일반 hover는 링크 수정키를 합성하면 안 된다.") } }
             let hover = try XCTUnwrap(NSEvent.mouseEvent(
                 with: .mouseMoved, location: point, modifierFlags: [],
                 timestamp: 0, windowNumber: window.windowNumber,
                 context: nil, eventNumber: 0, clickCount: 0, pressure: 0
             ))
             view.mouseMoved(with: hover)
-            await fulfillment(of: [hovered], timeout: 5)
-            XCTAssertEqual(view.hoveredLink, url)
-            XCTAssertEqual(NSCursor.current, NSCursor.pointingHand)
+            XCTAssertNil(view.hoveredLink)
+            XCTAssertEqual(NSCursor.current, NSCursor.crosshair)
+            coordinator.onHover = nil
             let opened = expectation(description: "TUI PR 링크 열기")
             coordinator.openExternalURL = {
                 openedURLs.append($0.absoluteString)
@@ -152,7 +146,7 @@ final class TerminalLinkTests: XCTestCase {
             }
             for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
                 let event = try XCTUnwrap(NSEvent.mouseEvent(
-                    with: type, location: point, modifierFlags: [],
+                    with: type, location: point, modifierFlags: [.command],
                     timestamp: 0, windowNumber: window.windowNumber,
                     context: nil, eventNumber: 0, clickCount: 1, pressure: 1
                 ))
@@ -204,13 +198,7 @@ final class TerminalLinkTests: XCTestCase {
             x: CGFloat(metrics.cellWidthPixels) / window.backingScaleFactor / 2,
             y: view.bounds.height - CGFloat(metrics.cellHeightPixels) / window.backingScaleFactor / 2
         ), to: nil)
-        let rehovered = expectation(description: "이동 전 링크 재검출")
-        rehovered.expectedFulfillmentCount = 2
-        coordinator.onHover = {
-            if $0 == links[0].0 {
-                rehovered.fulfill()
-            }
-        }
+        coordinator.onHover = { if $0 != nil { XCTFail("반복 hover도 수정키를 합성하면 안 된다.") } }
         for _ in 0..<2 {
             view.mouseMoved(with: try XCTUnwrap(NSEvent.mouseEvent(
                 with: .mouseMoved, location: linkPoint, modifierFlags: [],
@@ -218,7 +206,7 @@ final class TerminalLinkTests: XCTestCase {
                 eventNumber: 0, clickCount: 0, pressure: 0
             )))
         }
-        await fulfillment(of: [rehovered], timeout: 5)
+        XCTAssertNil(view.hoveredLink)
         coordinator.onHover = nil
         coordinator.openExternalURL = { _ in XCTFail("링크 밖 클릭은 마지막 호버 링크를 열면 안 된다.") }
         let blankPoint = view.convert(NSPoint(x: 400, y: 80), to: nil)
@@ -295,7 +283,7 @@ final class TerminalLinkTests: XCTestCase {
         )))
         session.receive("\u{1B}]22;text\u{7}")
         await fulfillment(of: [requested], timeout: 5)
-        XCTAssertEqual(NSCursor.current, NSCursor.pointingHand)
+        XCTAssertEqual(NSCursor.current, NSCursor.iBeam)
         view.mouseMoved(with: try XCTUnwrap(NSEvent.mouseEvent(
             with: .mouseMoved, location: blankPoint, modifierFlags: [],
             timestamp: 0, windowNumber: window.windowNumber, context: nil,
@@ -318,13 +306,9 @@ final class TerminalLinkTests: XCTestCase {
             await fulfillment(of: [completed], timeout: 5)
             coordinator.onTitle = nil
         }
-        func hoverLink(_ url: String = links[0].0) async throws {
-            let hovered = expectation(description: "대조 입력 전 실제 링크 조회")
-            coordinator.onHover = {
-                if $0 == url { coordinator.onHover = nil; hovered.fulfill() }
-            }
+        func hoverLink() throws {
             view.mouseMoved(with: try event(.mouseMoved, linkPoint))
-            await fulfillment(of: [hovered], timeout: 5)
+            XCTAssertNil(view.hoveredLink)
         }
         func clickFrames(since index: Int) -> [String] {
             Array(reports.values.dropFirst(index).filter { !$0.hasPrefix("\u{1B}[<35;") })
@@ -342,28 +326,46 @@ final class TerminalLinkTests: XCTestCase {
         XCTAssertEqual(clickFrames(since: baseline), ["\u{1B}[<0;20;3M", "\u{1B}[<0;20;3m"])
 
         for (flags, code) in [(NSEvent.ModifierFlags.option, 8), (.control, 16)] {
-            try await hoverLink()
+            try hoverLink()
             baseline = reports.values.count
             view.mouseDown(with: try event(.leftMouseDown, linkPoint, flags))
             view.mouseUp(with: try event(.leftMouseUp, linkPoint, flags))
             await settle("modifier-\(code)-complete")
             XCTAssertEqual(clickFrames(since: baseline), ["\u{1B}[<\(code);1;1M", "\u{1B}[<\(code);1;1m"])
         }
-        try await hoverLink()
+        try hoverLink()
         baseline = reports.values.count
         view.mouseDown(with: try event(.leftMouseDown, linkPoint))
         view.mouseUp(with: try event(.leftMouseUp, cellBlank))
         await settle("cancel-position-complete")
         XCTAssertEqual(clickFrames(since: baseline), ["\u{1B}[<0;1;1M", "\u{1B}[<32;20;3M", "\u{1B}[<0;20;3m"])
 
-        try await hoverLink()
+        try hoverLink()
         baseline = reports.values.count
         view.mouseDown(with: try event(.leftMouseDown, linkPoint))
         view.mouseUp(with: try event(.leftMouseUp, linkPoint, .option))
         await settle("cancel-modifier-complete")
         XCTAssertEqual(clickFrames(since: baseline), ["\u{1B}[<0;1;1M", "\u{1B}[<8;1;1m"])
 
-        try await hoverLink()
+        // 실제 Command down을 host가 캡처한 뒤 수정키 변경 또는 드래그로 취소한다.
+        try hoverLink()
+        baseline = reports.values.count
+        view.mouseDown(with: try event(.leftMouseDown, linkPoint, .command))
+        view.mouseUp(with: try event(.leftMouseUp, linkPoint, .option))
+        await settle("command-cancel-modifier-complete")
+        XCTAssertEqual(clickFrames(since: baseline), ["\u{1B}[<0;1;1M", "\u{1B}[<8;1;1m"])
+
+        try hoverLink()
+        baseline = reports.values.count
+        view.mouseDown(with: try event(.leftMouseDown, linkPoint, .command))
+        view.mouseDragged(with: try event(.leftMouseDragged, cellBlank, .command))
+        view.mouseUp(with: try event(.leftMouseUp, cellBlank, .command))
+        await settle("command-cancel-drag-complete")
+        XCTAssertEqual(clickFrames(since: baseline), [
+            "\u{1B}[<0;1;1M", "\u{1B}[<32;20;3M", "\u{1B}[<0;20;3m",
+        ])
+
+        try hoverLink()
         baseline = reports.values.count
         view.mouseDown(with: try event(.leftMouseDown, linkPoint))
         view.mouseExited(with: try XCTUnwrap(NSEvent.enterExitEvent(
@@ -378,7 +380,7 @@ final class TerminalLinkTests: XCTestCase {
             "\u{1B}[<0;1;1M", "\u{1B}[<32;20;3M", "\u{1B}[<32;1;1M", "\u{1B}[<0;1;1m",
         ])
 
-        try await hoverLink()
+        try hoverLink()
         var comparisonOpens: [String] = []
         coordinator.openExternalURL = { comparisonOpens.append($0.absoluteString) }
         baseline = reports.values.count
@@ -387,47 +389,64 @@ final class TerminalLinkTests: XCTestCase {
             view.mouseUp(with: try event(.leftMouseUp, linkPoint, [], count))
         }
         await settle("double-click-complete")
-        XCTAssertEqual(comparisonOpens, [links[0].0])
-        XCTAssertEqual(clickFrames(since: baseline), ["\u{1B}[<0;1;1M", "\u{1B}[<0;1;1m"])
+        XCTAssertEqual(comparisonOpens, [])
+        XCTAssertEqual(clickFrames(since: baseline), [
+            "\u{1B}[<0;1;1M", "\u{1B}[<0;1;1m", "\u{1B}[<0;1;1M", "\u{1B}[<0;1;1m",
+        ])
 
         // 캡처 모드가 바뀌어도 down 때 선택한 host 소유권을 유지한다.
-        try await hoverLink()
+        try hoverLink()
         baseline = reports.values.count
-        view.mouseDown(with: try event(.leftMouseDown, linkPoint))
+        view.mouseDown(with: try event(.leftMouseDown, linkPoint, .command))
         await settle("capture-off-pending", prefix: "\u{1B}[?1000l\u{1B}[?1002l\u{1B}[?1003l")
-        view.mouseUp(with: try event(.leftMouseUp, linkPoint))
+        view.mouseUp(with: try event(.leftMouseUp, linkPoint, .command))
         await settle("capture-change-click-complete")
-        XCTAssertEqual(comparisonOpens.count, 2)
+        XCTAssertEqual(comparisonOpens.count, 1)
         XCTAssertEqual(clickFrames(since: baseline), [])
         XCTAssertFalse(view.isMouseCaptured)
         for flags in [NSEvent.ModifierFlags(), .command] {
-            try await hoverLink()
+            try hoverLink()
             baseline = reports.values.count
             view.mouseDown(with: try event(.leftMouseDown, linkPoint, flags))
             view.mouseUp(with: try event(.leftMouseUp, linkPoint, flags))
             await settle("capture-off-\(flags.rawValue)-complete")
             XCTAssertEqual(clickFrames(since: baseline), [])
         }
-        XCTAssertEqual(comparisonOpens, Array(repeating: links[0].0, count: 4))
+        XCTAssertEqual(comparisonOpens, Array(repeating: links[0].0, count: 2))
 
         await settle("local-captured-ready", prefix: "\u{1B}[?1000h\u{1B}[?1003h\u{1B}[H\u{1B}[2J"
             + "\u{1B}]8;;docs/plan.md\u{1B}\\local\u{1B}]8;;\u{1B}\\")
-        try await hoverLink("docs/plan.md")
+        try hoverLink()
         var localFiles: [URL] = []
         coordinator.onOpenFile = { localFiles.append($0) }
         baseline = reports.values.count
-        view.mouseDown(with: try event(.leftMouseDown, linkPoint))
-        view.mouseUp(with: try event(.leftMouseUp, linkPoint))
+        view.mouseDown(with: try event(.leftMouseDown, linkPoint, .command))
+        view.mouseUp(with: try event(.leftMouseUp, linkPoint, .command))
         await settle("local-captured-click-complete")
         XCTAssertEqual(localFiles, [state.workingDirectory.appendingPathComponent("docs/plan.md")])
-        XCTAssertEqual(comparisonOpens.count, 4)
+        XCTAssertEqual(comparisonOpens.count, 2)
         XCTAssertEqual(clickFrames(since: baseline), [])
 
-        try await hoverLink("docs/plan.md")
+        // Command 클릭 조회 직후에도 상위 휠 경로에 합성 Shift가 남지 않아야 한다.
+        let scrollSelector = #selector(AppTerminalView.scrollWheel(with:))
+        let scrollMethod = try XCTUnwrap(class_getInstanceMethod(AppTerminalView.self, scrollSelector))
+        typealias ScrollImplementation = @convention(c) (AnyObject, Selector, NSEvent) -> Void
+        let parentScroll = unsafeBitCast(method_getImplementation(scrollMethod), to: ScrollImplementation.self)
+        let wheel = try XCTUnwrap(CGEvent(
+            scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 1,
+            wheel1: Int32(metrics.cellHeightPixels), wheel2: 0, wheel3: 0
+        ))
+        wheel.flags = []
         baseline = reports.values.count
-        view.mouseDown(with: try event(.leftMouseDown, linkPoint))
+        parentScroll(view, scrollSelector, try XCTUnwrap(NSEvent(cgEvent: wheel)))
+        await settle("command-click-modifiers-restored")
+        XCTAssertEqual(Array(reports.values.dropFirst(baseline)), ["\u{1B}[<64;1;1M"])
+
+        try hoverLink()
+        baseline = reports.values.count
+        view.mouseDown(with: try event(.leftMouseDown, linkPoint, .command))
         view.isActiveTerminal = { false }
-        view.mouseUp(with: try event(.leftMouseUp, linkPoint))
+        view.mouseUp(with: try event(.leftMouseUp, linkPoint, .command))
         await settle("inactive-click-complete")
         XCTAssertEqual(localFiles.count, 1)
         XCTAssertEqual(clickFrames(since: baseline), [])
@@ -580,7 +599,7 @@ final class TerminalLinkTests: XCTestCase {
     }
 
     @MainActor
-    func testActualGhosttyOSC8PlainClickOpensMarkdownAndDragSelectsText() async throws {
+    func testActualGhosttyOSC8CommandClickOpensMarkdownAndPlainDragSelectsText() async throws {
         _ = NSApplication.shared
         let state = TerminalTabState(workingDirectory: FileManager.default.temporaryDirectory, userConfigProvider: { nil })
         let session = InMemoryTerminalSession(write: { _ in }, resize: { _ in })
@@ -621,10 +640,10 @@ final class TerminalLinkTests: XCTestCase {
         let scale = window.backingScaleFactor
         let point = view.convert(NSPoint(x: CGFloat(metrics.cellWidthPixels) / scale,
                                         y: view.bounds.height - CGFloat(metrics.cellHeightPixels) / scale / 2), to: nil)
-        let hover = try XCTUnwrap(NSEvent.mouseEvent(with: .mouseMoved, location: point, modifierFlags: [],
+        let hover = try XCTUnwrap(NSEvent.mouseEvent(with: .mouseMoved, location: point, modifierFlags: [.command],
                                                    timestamp: 0, windowNumber: window.windowNumber,
                                                    context: nil, eventNumber: 0, clickCount: 0, pressure: 0))
-        let hovered = expectation(description: "수정키 없이 링크 hover 인식")
+        let hovered = expectation(description: "실제 Command로 링크 hover 인식")
         hovered.expectedFulfillmentCount = 2
         coordinator.onHover = { url in
             if url == "docs/plan.md" {
@@ -637,7 +656,7 @@ final class TerminalLinkTests: XCTestCase {
         coordinator.onHover = nil
         XCTAssertEqual(view.hoveredLink, "docs/plan.md")
         for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
-            let event = try XCTUnwrap(NSEvent.mouseEvent(with: type, location: point, modifierFlags: [],
+            let event = try XCTUnwrap(NSEvent.mouseEvent(with: type, location: point, modifierFlags: [.command],
                                                        timestamp: 0, windowNumber: window.windowNumber,
                                                        context: nil, eventNumber: 0, clickCount: 1, pressure: 1))
             if type == .leftMouseDown { view.mouseDown(with: event) }
