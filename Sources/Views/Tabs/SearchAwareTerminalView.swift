@@ -31,12 +31,11 @@ final class SearchAwareTerminalView: AppTerminalView {
         }
         let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         pendingLinkClick = nil
-        if isActiveTerminal(), modifiers.isEmpty, event.clickCount == 1, let url = hoveredLink {
-            pendingLinkClick = (url, event, isMouseCaptured)
-            if isMouseCaptured {
-                window?.makeFirstResponder(self)
-                return
-            }
+        if isActiveTerminal(), modifiers == [.command], event.clickCount == 1,
+           let url = commandClickLink(with: event) {
+            pendingLinkClick = (url, event, true)
+            window?.makeFirstResponder(self)
+            return
         }
         withPointerUpdate { super.mouseDown(with: event) }
     }
@@ -55,10 +54,10 @@ final class SearchAwareTerminalView: AppTerminalView {
         let pending = pendingLinkClick
         pendingLinkClick = nil
         if pending?.captured == true, !isActiveTerminal() { return }
-        let opensLink = isActiveTerminal()
-            && event.modifierFlags.intersection(.deviceIndependentFlagsMask).isEmpty
+        let opensLink = pending != nil && isActiveTerminal()
+            && event.modifierFlags.intersection(.deviceIndependentFlagsMask) == [.command]
             && pending?.down.locationInWindow == event.locationInWindow
-            && pending?.url == hoveredLink
+            && pending?.url == commandClickLink(with: event)
         withPointerUpdate {
             if let pending, pending.captured {
                 if !opensLink {
@@ -114,6 +113,27 @@ final class SearchAwareTerminalView: AppTerminalView {
         updatePointerCursor()
     }
 
+    private func commandClickLink(with event: NSEvent) -> String? {
+        let point = convert(event.locationInWindow, from: nil)
+        isPointerInside = bounds.contains(point)
+        guard isPointerInside else { return nil }
+        var url: String?
+        withPointerUpdate {
+            hoveredLink = nil
+            invalidateMousePosition(modifiers: event.modifierFlags)
+            var modifiers = event.modifierFlags
+            if isMouseCaptured { modifiers.insert(.shift) }
+            // TUI 캡처 우회는 실제 Command 클릭 동안만 수행한다.
+            // NSEvent를 합성하지 않고, 동기 콜백의 URL을 저장한 뒤 실제 수정키를 복원한다.
+            updateMousePosition(at: point, modifiers: modifiers)
+            url = hoveredLink
+            invalidateMousePosition(modifiers: event.modifierFlags)
+            super.mouseMoved(with: event)
+        }
+        updatePointerCursor()
+        return url
+    }
+
     func updateMouseShape(_ shape: ghostty_action_mouse_shape_e) {
         // 입력 중 엔진이 보내는 링크용 커서는 프로그램의 OSC 22 요청이 아니다.
         guard !isHandlingPointerEvent else { return }
@@ -146,30 +166,16 @@ final class SearchAwareTerminalView: AppTerminalView {
         // first responder에는 터미널 밖의 이동도 전달되므로 다른 영역의 커서를 덮어쓰지 않는다.
         isPointerInside = bounds.contains(convert(event.locationInWindow, from: nil))
         guard isPointerInside else { return }
-        // TUI에는 원래 이동을 전달하고, 캡처를 해제하는 Shift로 링크도 조회한다.
-        // 일반 쉘에서는 Shift가 링크 수정키 조건을 깨므로 캡처 중에만 추가한다.
-        var linkModifiers = event.modifierFlags.union(.command)
-        if isMouseCaptured {
-            super.mouseMoved(with: event)
-            linkModifiers.insert(.shift)
-        }
-        // 같은 링크 안 이동과 같은 좌표 재조회도 새 hover 결과를 받는다.
+        // 실제 수정키만 전달한다. 자동 hover가 Command+Shift 상태를 남기면 안 된다.
         invalidateMousePosition()
-        // Ghostty의 링크 탐지는 macOS에서 Command 수정키가 있어야 활성화된다.
-        let linkEvent = NSEvent.mouseEvent(
-            with: event.type, location: event.locationInWindow,
-            modifierFlags: linkModifiers,
-            timestamp: event.timestamp, windowNumber: event.windowNumber,
-            context: nil, eventNumber: event.eventNumber, clickCount: event.clickCount,
-            pressure: event.pressure
-        )
-        super.mouseMoved(with: linkEvent ?? event)
+        super.mouseMoved(with: event)
         updatePointerCursor()
     }
 
     override func mouseExited(with event: NSEvent) {
         isPointerInside = false
         withPointerUpdate { super.mouseExited(with: event) }
+        invalidateMousePosition(modifiers: event.modifierFlags)
         hoveredLink = nil
         NSCursor.arrow.set()
     }
