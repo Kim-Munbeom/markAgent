@@ -208,6 +208,7 @@
 | 115 | 터미널 Command 클릭 회귀 | 합성 hover 제거, 실제 클릭 직후 수정키 복원, 일반 클릭·선택 보존과 전체 435개 및 보강한 11개 테스트 통과 |
 | 116 | v26.10.12 릴리즈 준비 | 로컬 날짜 버전을 두 필드에 적용하고 dev/main PR 병합과 서명·공증 ZIP 배포 진행 |
 | 117 | 일반 hover 밑줄 복원 | 실제 링크 셀에만 밑줄 표시, 수정키·TUI 보고·선택 보존, 실제 해제 ABI 적용과 전체 435개 테스트 통과 |
+| 118 | v26.10.12.1 후속 릴리즈 준비 | 사용자 선택으로 날짜 뒤 .1 예외 적용, 기존 릴리즈 보존과 dev/main 병합·서명·공증 배포 진행 |
 
 ---
 
@@ -4225,3 +4226,18 @@ SDK 1.4.0의 헤더와 실제 `ghostty_surface_free_text` 바이너리 인자가
 libghostty-spm 1.4.0 `356f730bec03281fc7b83666a129b0246137ea26`에 선택 복사 PR #23 병합 `65051461aadfa6ab46a239d0de701763279d83af`이 포함됨을 확인했다. 의존성·기존 패치는 유지하며 설치 앱 PID 69921과 기존 미추적 자료를 보존했다.
 
 변경 파일: `Sources/Views/Tabs/SearchAwareTerminalView.swift`, `scripts/patches/AppTerminalView+MouseCapture.swift`, `Tests/MarkAgentTests/TerminalLinkTests.swift`, `history.md`
+
+---
+
+### 대화 2: dev/main PR 병합과 후속 릴리즈 준비
+
+**사용자:**
+> dev pr 머지, main pr 머지, 릴리즈 진행해줘
+> 릴리즈 버전: 26.10.12.1 (Recommended)
+
+**응답:**
+기존 `v26.10.12`가 게시되어 있어 새 버전을 확인했고, 사용자 선택에 따라 같은 날짜 뒤 `.1` 예외를 적용하여 두 앱 버전 필드를 `26.10.12.1`로 맞춘다. 기존 태그와 자산은 덮어쓰지 않는다. 기능 커밋 `d9540bb`를 dev 대상 PR #83에 반영했으며 잠금 격리 후보의 release 빌드와 단일 최종 게이트가 통과했다.
+
+버전·히스토리 커밋을 추가한 뒤 기능 PR을 dev로, dev PR을 main으로 순서대로 merge commit 병합한다. 최종 main의 동일한 파일 트리에서 Developer ID 서명, `markagent` 프로필 공증, stapling·압축 해제 검증을 수행하고 새 릴리즈 게시 후 다운로드 자산 해시·버전·서명·공증을 확인한다. 설치 앱과 관련 없는 미추적 자료는 유지한다.
+
+변경 파일: `Sources/App/Info.plist`, `history.md`
