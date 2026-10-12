@@ -67,6 +67,11 @@ final class TerminalScrollIntegrationTests: XCTestCase {
 
         let screen = try XCTUnwrap(NSScreen.screens.first)
         let step = Int32(metrics.cellHeightPixels)
+        // 뷰의 휠 복원 코드를 우회하여 hover가 엔진에 Shift를 남기지 않았는지 직접 검사한다.
+        let selector = #selector(AppTerminalView.scrollWheel(with:))
+        let method = try XCTUnwrap(class_getInstanceMethod(AppTerminalView.self, selector))
+        typealias ScrollImplementation = @convention(c) (AnyObject, Selector, NSEvent) -> Void
+        let parentScroll = unsafeBitCast(method_getImplementation(method), to: ScrollImplementation.self)
         for (index, flags, delta, code, column, row) in [
             (0, CGEventFlags(), step, 64, 10, 4),
             (1, CGEventFlags.maskShift, step, 68, 10, 4),
@@ -97,7 +102,11 @@ final class TerminalScrollIntegrationTests: XCTestCase {
             coordinator.onTitle = { if $0 == title { completed.fulfill() } }
             let before = reports.values.count
             // 수정키 없는 실제 휠은 링크 조회용 Command+Shift를 상속하면 안 된다.
-            view.scrollWheel(with: wheel)
+            if index == 0 {
+                parentScroll(view, selector, wheel)
+            } else {
+                view.scrollWheel(with: wheel)
+            }
             session.receive("\u{1B}]2;\(title)\u{7}")
             await fulfillment(of: [completed], timeout: 5)
             coordinator.onTitle = nil

@@ -82,6 +82,7 @@
 82. [세션 78: 기존 Swift 경고 수정과 Fable 표시 순서 보정](#세션-78-기존-swift-경고-수정과-fable-표시-순서-보정)
 83. [세션 79: herdr 작업 경로와 파일 열기 연동](#세션-79-herdr-작업-경로와-파일-열기-연동)
 84. [세션 80: Milkdown 편집기와 탭 전환 안정화 및 v26.10.08 릴리즈](#세션-80-milkdown-편집기와-탭-전환-안정화-및-v261008-릴리즈)
+85. [세션 81: 터미널 Command 클릭 회귀와 v26.10.12 릴리즈](#세션-81-터미널-command-클릭-회귀와-v261012-릴리즈)
 
 ---
 
@@ -203,6 +204,7 @@
 | 112 | Milkdown 두 모드와 탭 전환 안정화 | 오프라인 원문 Edit·읽기 전용 Preview, UTF16·줄끝·undo·저장·중립 복사와 탭 수명 보존, 전체 Swift 435개·Bun 24개 통과 |
 | 113 | 터미널 휠과 링크 중복 전달 수정 | 실제 modifier·위치를 복원하고 캡처 링크의 host open 1회 및 drag 재전달 검증 |
 | 114 | 앱 소유 Caffeinate 표시와 v26.10.08 배포 준비 | 앱 assertion에 On/Off를 맞추고 dev/main PR 병합·서명·공증 배포 준비 |
+| 115 | 터미널 Command 클릭 회귀 | 합성 hover 제거, 실제 클릭 직후 수정키 복원, 일반 클릭·선택 보존과 전체 435개 및 보강한 11개 테스트 통과 |
 
 ---
 
@@ -4155,3 +4157,31 @@ On/Off 라벨·커피잔·점을 앱 소유 assertion으로 함께 결정한다.
 격리된 고정 후보 빌드에서 새 수명 회귀의 변경하지 않는 weak 변수 두 개에 SDK 경고가 발생했다. 인접 테스트의 weak 상수 패턴으로 보정하며 해제 관찰 의미는 유지한다. 복제한 Xcode 빌드 캐시가 원래 작업트리의 절대 경로를 가리키는 stale 경고도 확인해 다음 후보는 새 scratch 경로에서 검증한다. 생성 파일을 숨기거나 경고를 억제하지 않는다.
 
 변경 파일: `Tests/MarkAgentTests/MarkdownTabLayoutTests.swift`, `history.md`
+
+---
+
+## 세션 81: 터미널 Command 클릭 회귀와 v26.10.12 릴리즈
+
+> 날짜: 2026-10-12
+> 경로: ~/workspace/markAgent
+
+터미널 링크의 자동 hover가 파일명 뒤까지 밑줄을 표시하는 현상을 실제 설치 앱의 다른 Herdr space에서 확인했다. 사용자가 제안한 Command 클릭 회귀로 자동 합성 수정키 경로를 제거하고 일반 TUI 입력과 드래그 선택을 보존한다.
+
+### 대화 1: 자동 hover 제거와 실제 Command 클릭 복원
+
+**사용자:**
+> 링크 & 클릭 기능이 잘 동작하는데, 문제는 밑줄이 파일명을 지나 터미널 오른쪽 끝까지 표시되는 경우가 있어.
+> 현재 내 입력기가 속입력기인데, cmd_shift가 물리게 되면 한글 입력이 안되고 영어만 입력되거든.
+> 안되면 cmd+클릭으로 회귀해서 해당 문제를 원천적으로 해결하는 방법이 있어
+> cmd+shift가 락이 되지 않았다면 문제는 없을거야.
+
+**응답:**
+요청한 두 시점의 실제 화면에서 파일명 뒤부터 우측 끝까지 이어지는 밑줄을 확인했다. 정적 QA 출력이 정상인 결과를 실제 Herdr 문제의 해결 증거로 대체하지 않는다. 기존 설치 앱에는 휠 직전 수정키 복원이 이미 포함되어 있으므로 같은 수정을 새 해결책으로 반복하지 않았다.
+
+일반 hover는 실제 수정키만 전달하며 합성 `NSEvent`를 만들지 않는다. 실제 Command 클릭에서만 직접 Ghostty C API로 URL을 조회하고 TUI 캡처 우회용 Shift를 즉시 실제 수정키로 복원한다. 같은 좌표 갱신을 무시하는 엔진 경계 때문에 무효 좌표를 먼저 전달한다. Host가 열기를 처리한 클릭은 엔진에 중복 전달하지 않으며 일반 클릭·드래그, 수정키 변경·드래그 취소와 비활성 탭 처리를 보존한다.
+
+Swift 전체 435개 테스트가 통과했고 보강한 링크·스크롤 11개 테스트도 통과했다. 상위 휠 구현을 직접 호출하여 뷰의 휠 복원 경로에 가려지지 않은 Shift 잔류를 검사했다. 실제 수정 앱에서 Command 클릭으로 `AGENTS.md` 탭을 여는 것을 확인했고 실제 `NSEvent.modifierFlags` 값은 0이었다. 속입력기 한글 조합 자체는 전면 입력 제약 때문에 독립 검증하지 않았다.
+
+`leaks 59665`는 기존 macOS `com.apple.linkd.autoShortcut` NSXPC 순환 참조 3개에 연결된 415건·19,888바이트를 보고했다. 0 leaks로 표현하지 않는다. libghostty-spm 1.4.0 `356f730bec03281fc7b83666a129b0246137ea26`에는 선택 복사 누수 PR #23 병합 `65051461aadfa6ab46a239d0de701763279d83af`이 포함되어 있으며 의존성이나 기존 패치를 제거하지 않았다. 직접 생성한 QA 앱만 종료했고 사용자 설치 앱 PID 82425와 기존 미추적 자료를 보존했다.
+
+변경 파일: `Sources/Views/Tabs/SearchAwareTerminalView.swift`, `scripts/patches/AppTerminalView+MouseCapture.swift`, `Tests/MarkAgentTests/TerminalLinkTests.swift`, `Tests/MarkAgentTests/TerminalScrollIntegrationTests.swift`, `history.md`
